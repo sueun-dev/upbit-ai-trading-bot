@@ -172,6 +172,12 @@ seen_news.json
 # Trading bot secrets
 .env
 config/.env
+src/infrastructure/config/settings_local.py
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
 
 # uv specific
 .uv/ 
