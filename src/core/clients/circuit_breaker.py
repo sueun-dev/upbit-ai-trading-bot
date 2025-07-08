@@ -12,29 +12,14 @@ logger = logging.getLogger(__name__)
 class CircuitBreaker:
     """Circuit breaker to prevent cascading losses."""
     
-
-    def __init__(
-        self,
-        max_consecutive_losses: int = 3,
-        max_daily_loss_percent: float = 10.0,
-        max_trades_per_hour: int = 10,
-        cooldown_hours: int = 2,
-        data_file: str = "circuit_breaker_data.json"
-    ):
-        """Initialize circuit breaker.
-        
-        Args:
-            max_consecutive_losses: Maximum allowed consecutive losses
-            max_daily_loss_percent: Maximum daily loss percentage
-            max_trades_per_hour: Maximum trades allowed per hour
-            cooldown_hours: Hours to wait after circuit break
-            data_file: File to store circuit breaker data
-        """
-        self.max_consecutive_losses = max_consecutive_losses
-        self.max_daily_loss_percent = max_daily_loss_percent
-        self.max_trades_per_hour = max_trades_per_hour
-        self.cooldown_hours = cooldown_hours
-        self.data_file = os.path.join(os.path.dirname(__file__), data_file)
+    # USED
+    def __init__(self):
+        """Initialize circuit breaker with default settings."""
+        self.max_consecutive_losses = 3
+        self.max_daily_loss_percent = 10.0
+        self.max_trades_per_hour = 10
+        self.cooldown_hours = 2
+        self.data_file = os.path.join(os.path.dirname(__file__), "circuit_breaker_data.json")
         
         self.trade_history: List[Dict] = []
         self.circuit_open = False
@@ -55,16 +40,11 @@ class CircuitBreaker:
             self.consecutive_losses = data.get('consecutive_losses', 0)
             logger.info(f"Loaded circuit breaker data: {len(self.trade_history)} trades, circuit_open={self.circuit_open}")
         except:
-            self._initialize_empty_data()
-    
+            self.trade_history = []
+            self.circuit_open = False
+            self.circuit_open_time = None
+            self.consecutive_losses = 0
 
-    def _initialize_empty_data(self) -> None:
-        """Initialize with empty data."""
-        self.trade_history = []
-        self.circuit_open = False
-        self.circuit_open_time = None
-        self.consecutive_losses = 0
-    
     def _save_data(self) -> None:
         """Save circuit breaker data to file."""
         try:

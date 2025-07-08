@@ -100,9 +100,13 @@ class RiskMonitor:
     - Stop-loss triggers
     """
     
-    def __init__(self) -> None:
-        """Initialize the risk monitor."""
-        self.openai_client = None  # Will be set by initialize()
+    def __init__(self, api_key: str) -> None:
+        """Initialize the risk monitor.
+        
+        Args:
+            api_key: OpenAI API key
+        """
+        self.openai_client = OpenAIClient(api_key=api_key)
         self.risk_thresholds = {
             'position_size': MAX_INVEST_RATIO_PER_COIN,
             'total_exposure': MAX_TOTAL_INVEST_RATIO,
@@ -111,15 +115,6 @@ class RiskMonitor:
             'correlation_high': CORRELATION_HIGH_THRESHOLD
         }
         logger.info("Risk Monitor initialized")
-    
-    # USED
-    def initialize(self, api_key: str) -> None:
-        """Initialize with API key.
-        
-        Args:
-            api_key: OpenAI API key
-        """
-        self.openai_client = OpenAIClient(api_key=api_key)
     
     # USED
     def monitor_active_positions(
@@ -624,8 +619,8 @@ class RiskMonitor:
         data1 = market_data.get(symbol1, {})
         data2 = market_data.get(symbol2, {})
         
-        change1 = float(data1.get('price_change_24h', 0))
-        change2 = float(data2.get('price_change_24h', 0))
+        change1 = float(data1.get('price_24h_change', 0))
+        change2 = float(data2.get('price_24h_change', 0))
         
         # Simple correlation estimate
         if change1 * change2 > 0:  # Same direction
@@ -961,7 +956,7 @@ class RiskMonitor:
             True if stop-loss should be triggered.
         """
         # Check if market is in freefall
-        price_change_24h = float(market_info.get('price_change_24h', 0))
+        price_change_24h = float(market_info.get('price_24h_change', 0))
         if price_change_24h < FREEFALL_THRESHOLD:
             return True
         
@@ -1092,5 +1087,3 @@ class RiskMonitor:
         }
 
 
-# Create singleton instance
-risk_monitor = RiskMonitor()

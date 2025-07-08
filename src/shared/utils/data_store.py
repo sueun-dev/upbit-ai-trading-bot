@@ -154,6 +154,18 @@ class DataStore:
                     )
                 """)
                 
+                # Create index on URL for faster duplicate checks
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_news_url 
+                    ON news_records(url)
+                """)
+                
+                # Create index on created_at for time-based queries
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_news_created_at 
+                    ON news_records(created_at)
+                """)
+                
                 conn.commit()
                 logger.info("Database initialized successfully")
                 
@@ -227,11 +239,32 @@ class DataStore:
     
     def record_news(self, title: str, summary: str, source: str, url: str = None, 
                    extracted_symbols: List[str] = None, sentiment_score: float = None) -> bool:
-        """Record news item with analysis."""
+        """Record news item with analysis, checking for duplicates."""
         try:
             with self.lock:
                 with sqlite3.connect(self.db_path) as conn:
                     cursor = conn.cursor()
+                    
+                    # Check for duplicate by URL (if provided) or title
+                    if url:
+                        cursor.execute("""
+                            SELECT id FROM news_records 
+                            WHERE url = ? 
+                            AND datetime(created_at) > datetime('now', '-72 hours')
+                        """, (url,))
+                    else:
+                        # If no URL, check by title similarity (exact match for now)
+                        cursor.execute("""
+                            SELECT id FROM news_records 
+                            WHERE title = ? 
+                            AND datetime(created_at) > datetime('now', '-72 hours')
+                        """, (title,))
+                    
+                    if cursor.fetchone():
+                        logger.debug(f"News already exists: {title[:50]}...")
+                        return False
+                    
+                    # Insert new news
                     cursor.execute("""
                         INSERT INTO news_records (
                             timestamp, title, summary, source, url, 

@@ -79,29 +79,23 @@ class PatternLearner:
     - Performance tracking
     """
     
-    def __init__(self) -> None:
-        """Initialize the pattern learner."""
-        self.openai_client = None  # Will be set by initialize()
-        self.db_path = get_db_path('pattern_learning.db')
-        self._init_database()
-        self.pattern_cache = {}
-        logger.info("Pattern Learner initialized")
-    
-    # USED
-    def initialize(self, api_key: str) -> None:
-        """Initialize with API key.
+    def __init__(self, api_key: str) -> None:
+        """Initialize the pattern learner.
         
         Args:
             api_key: OpenAI API key
         """
         self.openai_client = OpenAIClient(api_key=api_key)
-    
-    def _init_database(self) -> None:
-        """Initialize pattern learning database."""
+        self.db_path = get_db_path('pattern_learning.db')
+        
+        # Initialize pattern learning database
         with sqlite3.connect(self.db_path) as conn:
             self._create_patterns_table(conn)
             self._create_lessons_table(conn)
             self._create_outcomes_table(conn)
+        
+        self.pattern_cache = {}
+        logger.info("Pattern Learner initialized")
     
     def _create_patterns_table(self, conn: sqlite3.Connection) -> None:
         """Create learned patterns table."""
@@ -253,6 +247,7 @@ class PatternLearner:
             logger.error(f"Failed to analyze failure patterns: {e}")
             return self._get_empty_failure_analysis()
     
+    # USED
     def get_trading_lessons_for_prompt(self) -> List[str]:
         """Get relevant trading lessons for AI prompts.
         
@@ -288,7 +283,7 @@ class PatternLearner:
             'symbol': symbol,
             'action': action,
             'price_trend': self._categorize_trend(
-                market_conditions.get('price_change_24h', 0)
+                market_conditions.get('price_24h_change', 0)
             ),
             'volume_level': self._categorize_volume(
                 market_conditions.get('volume_ratio', 1)
@@ -1242,5 +1237,3 @@ Focus on {focus}.
         return successful_lessons
 
 
-# Create singleton instance
-pattern_learner = PatternLearner()

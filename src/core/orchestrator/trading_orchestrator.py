@@ -1,22 +1,21 @@
 """Trading orchestrator for coordinating the end-to-end trading process.
 
 This module orchestrates news collection, market analysis, AI decision making,
-and trade execution with comprehensive safety systems and dashboard integration.
+and trade execution with comprehensive safety systems.
 """
 
 import logging
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Tuple
 
 from src.analysis.ai_analyzer import AIAnalyzer
-from src.analysis.portfolio.portfolio_manager import get_portfolio_status
 from src.analysis.enhanced_market_analyzer import enhanced_market_analyzer
-from src.analysis.multi_ai_validator import multi_ai_validator
-from src.analysis.risk_monitor import risk_monitor
-from src.analysis.adaptive_risk_manager import adaptive_risk_manager
-from src.analysis.pattern_learner import pattern_learner
-from src.analysis.post_trade_analyzer import post_trade_analyzer
+from src.analysis.multi_ai_validator import MultiAIValidator
+from src.analysis.risk_monitor import RiskMonitor
+from src.analysis.adaptive_risk_manager import AdaptiveRiskManager
+from src.analysis.pattern_learner import PatternLearner
+from src.analysis.post_trade_analyzer import PostTradeAnalyzer
 from src.analysis.ai_learning.ai_learning_system import trade_history_analyzer, AILearningSystem
 from src.data.collectors.enhanced_market_data import enhanced_collector
 from src.data.scrapers.multi_source_scraper import multi_source_scraper
@@ -24,44 +23,12 @@ from src.core.clients.upbit_trader import UpbitTrader
 from src.core.clients.circuit_breaker import CircuitBreaker
 from src.shared.utils.helpers import get_formatted_datetime
 from src.shared.utils.data_store import DataStore, TradeRecord, AIAnalysisResult, TradeAnalysis
-from src.shared.utils.analysis_state import analysis_state
 
-# Constants for analysis stages
-STAGE_IDLE = 'idle'
-STAGE_STARTING = 'starting'
-STAGE_NEWS_COLLECTION = 'news_collection'
-STAGE_SYMBOL_EXTRACTION = 'symbol_extraction'
-STAGE_MARKET_ANALYSIS = 'market_analysis'
-STAGE_PORTFOLIO_ANALYSIS = 'portfolio_analysis'
-STAGE_AI_ANALYSIS = 'ai_analysis'
-STAGE_EXECUTION = 'execution'
-STAGE_COMPLETED = 'completed'
-STAGE_ERROR = 'error'
-STAGE_PAUSED = 'paused'
-
-# Progress percentages
-PROGRESS_START = 0
-PROGRESS_NEWS_COLLECTING = 25
-PROGRESS_NEWS_COLLECTED = 50
-PROGRESS_SYMBOL_EXTRACTION = 75
-PROGRESS_SYMBOL_EXTRACTED = 100
-PROGRESS_MARKET_COLLECTING = 25
-PROGRESS_MARKET_BASE = 25
-PROGRESS_MARKET_RANGE = 50
-PROGRESS_MARKET_COLLECTED = 75
-PROGRESS_PORTFOLIO_ANALYSIS = 80
-PROGRESS_AI_ANALYSIS_START = 85
-PROGRESS_PATTERN_LEARNING = 87
-PROGRESS_MULTI_AI_VALIDATION = 89
-PROGRESS_RISK_CALCULATION = 91
-PROGRESS_RISK_MONITORING = 88
-PROGRESS_TRADE_EXECUTION = 90
-PROGRESS_POST_TRADE_ANALYSIS = 95
-PROGRESS_COMPLETE = 100
 
 # Default values
 DEFAULT_CONFIDENCE = 0.5
 DEFAULT_ACTION = 'hold'
+DEFAULT_BUY_AMOUNT_KRW = 30_000     # Default buy amount (KRW)
 MIN_PORTFOLIO_BALANCE = 0
 MIN_VIABLE_TRADE_AMOUNT = 10000
 STOP_LOSS_CONFIDENCE = 0.9
@@ -96,38 +63,11 @@ HEALTH_CHECK_PATTERN_DAYS = 7
 HEALTH_CHECK_TRADE_HOURS = 24
 HEALTH_CHECK_TRADE_LIMIT_CIRCUIT = 20
 
-# Status messages
-STATUS_WAITING = 'Waiting for next cycle'
-STATUS_STARTING = 'Starting new trading cycle...'
-STATUS_COLLECTING_NEWS = 'Collecting news from multiple sources...'
-STATUS_NEWS_COLLECTED = 'Collected {} news articles'
-STATUS_EXTRACTING_SYMBOLS = 'Extracting cryptocurrency symbols from news...'
-STATUS_SYMBOLS_EXTRACTED = 'Extracted {} symbols'
-STATUS_COLLECTING_MARKET = 'Collecting enhanced market data...'
-STATUS_ANALYZING_SYMBOLS = 'Analyzed {}/{} symbols'
-STATUS_MARKET_COLLECTED = 'Enhanced data collected for {} symbols'
-STATUS_ANALYZING_PORTFOLIO = 'Analyzing portfolio status...'
-STATUS_RUNNING_AI = 'Running AI market analysis...'
-STATUS_APPLYING_PATTERNS = 'Applying learned patterns...'
-STATUS_VALIDATING_DECISIONS = 'Cross-validating decisions...'
-STATUS_CALCULATING_POSITIONS = 'Calculating optimal position sizes...'
-STATUS_MONITORING_RISKS = 'Monitoring portfolio risks...'
-STATUS_EXECUTING_TRADES = 'Executing trading decisions...'
-STATUS_ANALYZING_STOP_LOSS = 'Analyzing stop-loss decisions...'
-STATUS_CYCLE_COMPLETED = 'Cycle completed - {} decisions made'
-STATUS_CYCLE_FAILED = 'Cycle failed: {}'
-STATUS_NO_NEWS = 'No news available - cycle aborted'
-STATUS_NO_SYMBOLS = 'No symbols extracted - cycle aborted'
-STATUS_NO_MARKET_DATA = 'Failed to collect market data'
-STATUS_INVALID_PORTFOLIO = 'Invalid portfolio data'
-STATUS_CIRCUIT_BREAKER = 'Circuit breaker activated - trading paused'
 
 # Log messages
 LOG_CYCLE_COMPLETE = "✅ [CYCLE COMPLETED] Trading cycle finished"
-LOG_CIRCUIT_BREAKER = "Circuit breaker activated - skipping trading cycle"
 LOG_NEWS_COLLECTED = "Collected %d news items from multiple sources."
 LOG_SYMBOLS_EXTRACTED = "Target symbols: %s"
-LOG_MARKET_COLLECTED = "Collected enhanced market data for %d coins."
 LOG_EXECUTING_DECISIONS = "Executing %d decisions on %s %s"
 LOG_MISSING_FIELDS = "%s: Missing required fields %s - skipping"
 LOG_DECISION_SUMMARY = "[%s] Action=%s | Confidence=%.2f%s"
@@ -135,7 +75,6 @@ LOG_AI_ANALYSIS_RECORDED = "📊 AI analysis recorded for {} {}: {}"
 LOG_AI_ANALYSIS_FAILED = "Failed to analyze trade action for {}: {}"
 LOG_AVERAGING_SUCCESS = "✅ %s: Averaged down (loss: %.2f%%, attempts: %d) on %s"
 LOG_NO_NEWS = "No news collected; aborting cycle"
-LOG_NO_SYMBOLS = "No symbols extracted; aborting cycle"
 LOG_NO_MARKET_DATA = "No market data; aborting cycle"
 LOG_INVALID_PORTFOLIO = "Invalid portfolio; aborting cycle"
 LOG_PATTERN_LESSONS = "📚 Applied {} learned lessons to AI analysis"
@@ -175,7 +114,7 @@ logger = logging.getLogger(__name__)
 
 
 class TradingOrchestrator:
-    """Orchestrates the end-to-end trading process with dashboard integration.
+    """Orchestrates the end-to-end trading process.
     
     Coordinates news collection, market analysis, AI decision making,
     and trade execution with comprehensive safety systems.
@@ -196,33 +135,20 @@ class TradingOrchestrator:
             openai_api_key: OpenAI API key.
             trade_analyzer: Trade history analyzer instance.
         """
+        self.circuit_breaker = CircuitBreaker()
         self.trader = UpbitTrader(access_key=access_key, secret_key=secret_key)
         self.ai_analyzer = AIAnalyzer(api_key=openai_api_key)
         self.openai_api_key = openai_api_key
-        self.circuit_breaker = CircuitBreaker()
         self.data_store = DataStore()
         self.trade_analyzer = trade_analyzer if trade_analyzer else trade_history_analyzer
         
         # AI Safety Systems - Initialize with API key
-        self.multi_ai_validator = multi_ai_validator
-        self.risk_monitor = risk_monitor
-        self.adaptive_risk_manager = adaptive_risk_manager
-        self.pattern_learner = pattern_learner
-        self.post_trade_analyzer = post_trade_analyzer
+        self.multi_ai_validator = MultiAIValidator(openai_api_key)
+        self.risk_monitor = RiskMonitor(openai_api_key)
+        self.adaptive_risk_manager = AdaptiveRiskManager()
+        self.pattern_learner = PatternLearner(openai_api_key)
+        self.post_trade_analyzer = PostTradeAnalyzer(openai_api_key)
         
-        # Initialize AI safety systems with API key
-        self.multi_ai_validator.initialize(openai_api_key)
-        self.risk_monitor.initialize(openai_api_key)
-        self.pattern_learner.initialize(openai_api_key)
-        self.post_trade_analyzer.initialize(openai_api_key)
-        
-        # Dashboard state tracking
-        self.current_analysis_state = {
-            'stage': STAGE_IDLE,
-            'progress': PROGRESS_START,
-            'status': STATUS_WAITING,
-            'last_update': datetime.now().isoformat()
-        }
         self._cycle_count = 0
         self._last_cycle_time = None
 
@@ -233,35 +159,33 @@ class TradingOrchestrator:
         Returns:
             List of news articles with title, summary, source, and url.
         """
-        self._update_analysis_state(STAGE_NEWS_COLLECTION, PROGRESS_NEWS_COLLECTING, STATUS_COLLECTING_NEWS)
-        
         news_list = multi_source_scraper.fetch_all_news(max_total_articles=MAX_NEWS_ARTICLES) or []
         logger.info(LOG_NEWS_COLLECTED, len(news_list))
         
         # Store news in data store
         self._store_news_articles(news_list)
-        
-        self._update_analysis_state(
-            STAGE_NEWS_COLLECTION,
-            PROGRESS_NEWS_COLLECTED,
-            STATUS_NEWS_COLLECTED.format(len(news_list))
-        )
         return news_list
     
     # USED
     def _store_news_articles(self, news_list: List[Dict]) -> None:
-        """Store news articles in data store.
+        """Store news articles in data store, skipping duplicates.
         
         Args:
             news_list: List of news articles to store.
         """
+        stored_count = 0
         for article in news_list:
-            self.data_store.record_news(
+            success = self.data_store.record_news(
                 title=article.get('title', ''),
                 summary=article.get('summary', ''),
                 source=article.get('source', ''),
                 url=article.get('url', '')
             )
+            if success:
+                stored_count += 1
+        
+        if stored_count < len(news_list):
+            logger.info(f"Skipped {len(news_list) - stored_count} duplicate news articles")
 
     # USED
     def extract_market_symbols(self, news_list: List[Dict]) -> List[str]:
@@ -273,16 +197,8 @@ class TradingOrchestrator:
         Returns:
             List of extracted cryptocurrency symbols.
         """
-        self._update_analysis_state(STAGE_SYMBOL_EXTRACTION, PROGRESS_SYMBOL_EXTRACTION, STATUS_EXTRACTING_SYMBOLS)
-        
         symbols = self.ai_analyzer.extract_symbols_from_news(news_list) or []
         logger.info(LOG_SYMBOLS_EXTRACTED, symbols)
-        
-        self._update_analysis_state(
-            STAGE_SYMBOL_EXTRACTION,
-            PROGRESS_SYMBOL_EXTRACTED,
-            STATUS_SYMBOLS_EXTRACTED.format(len(symbols))
-        )
         return symbols
 
     # USED
@@ -295,69 +211,30 @@ class TradingOrchestrator:
         Returns:
             Dictionary mapping symbols to their market data.
         """
-        self._update_analysis_state(STAGE_MARKET_ANALYSIS, PROGRESS_MARKET_COLLECTING, STATUS_COLLECTING_MARKET)
+        # Get portfolio to check holdings
+        portfolio = self.trader.get_portfolio_status()
+        held_assets = set(portfolio.get('assets', {}).keys())
         
-        data_map = self._collect_and_analyze_market_data(symbols)
-        
-        logger.info(LOG_MARKET_COLLECTED, len(data_map))
-        self._update_analysis_state(
-            STAGE_MARKET_ANALYSIS,
-            PROGRESS_MARKET_COLLECTED,
-            STATUS_MARKET_COLLECTED.format(len(data_map))
-        )
-        return data_map
-    
-    # USED
-    def _collect_and_analyze_market_data(self, symbols: List[str]) -> Dict[str, Dict]:
-        """Collect and analyze market data for symbols.
-        
-        Args:
-            symbols: List of symbols to analyze.
-            
-        Returns:
-            Market data dictionary.
-        """
         data_map: Dict[str, Dict] = {}
-        total_symbols = len(symbols)
         
-        for i, symbol in enumerate(symbols):
-            market_dict = self._get_enhanced_market_data(symbol)
-            if market_dict:
+        for symbol in symbols:
+            enhanced_data = enhanced_collector.get_enhanced_market_data(symbol)
+            if enhanced_data:
+                # Convert dataclass to dict for JSON serialization
+                market_dict = enhanced_data.__dict__
+                
+                # Add is_held field BEFORE analysis
+                market_dict['is_held'] = symbol in held_assets
+                
+                # Perform comprehensive analysis
+                comprehensive_analysis = enhanced_market_analyzer.analyze(market_dict)
+                
+                # Add analysis results to market data
+                market_dict['comprehensive_analysis'] = comprehensive_analysis
                 data_map[symbol] = market_dict
-            
-            # Update progress
-            progress = PROGRESS_MARKET_BASE + (i + 1) / total_symbols * PROGRESS_MARKET_RANGE
-            self._update_analysis_state(
-                STAGE_MARKET_ANALYSIS,
-                progress,
-                STATUS_ANALYZING_SYMBOLS.format(i + 1, total_symbols)
-            )
         
+        logger.info("Collected enhanced market data for %d coins.", len(data_map))
         return data_map
-    
-    # USED
-    def _get_enhanced_market_data(self, symbol: str) -> Optional[Dict]:
-        """Get enhanced market data for a symbol.
-        
-        Args:
-            symbol: Cryptocurrency symbol.
-            
-        Returns:
-            Market data dictionary or None.
-        """
-        enhanced_data = enhanced_collector.get_enhanced_market_data(symbol)
-        if not enhanced_data:
-            return None
-        
-        # Convert dataclass to dict for JSON serialization
-        market_dict = enhanced_data.__dict__
-        
-        # Perform comprehensive analysis
-        comprehensive_analysis = enhanced_market_analyzer.analyze_market_comprehensive(market_dict)
-        
-        # Add analysis results to market data
-        market_dict['comprehensive_analysis'] = comprehensive_analysis
-        return market_dict
 
     # USED
     def execute_trading_decisions(self, decisions: Dict[str, Dict]) -> None:
@@ -517,7 +394,7 @@ class TradingOrchestrator:
             timestamp=timestamp,
             symbol=symbol,
             action=action,
-            action_korean=self._get_action_korean(action),
+            action_korean=ACTION_KOREAN_MAP.get(action, action),
             analysis=f"Executed {action} for {symbol}",
             summary=decision["reason"],
             confidence=decision.get("confidence", DEFAULT_CONFIDENCE),
@@ -614,14 +491,9 @@ class TradingOrchestrator:
         self._cycle_count += 1
         self._last_cycle_time = datetime.now().isoformat()
         
-        # Reset analysis state for new cycle
-        analysis_state.reset_cycle()
-        self._update_analysis_state(STAGE_STARTING, PROGRESS_START, STATUS_STARTING)
-        
         # Check circuit breaker
         if not self.circuit_breaker.can_trade():
-            logger.warning(LOG_CIRCUIT_BREAKER)
-            self._update_analysis_state(STAGE_PAUSED, PROGRESS_START, STATUS_CIRCUIT_BREAKER)
+            logger.warning("Circuit breaker activated - skipping trading cycle")
             return
         
         try:
@@ -630,7 +502,6 @@ class TradingOrchestrator:
             
         except Exception as e:
             logger.error(LOG_CYCLE_FAILED.format(e))
-            self._update_analysis_state(STAGE_ERROR, PROGRESS_START, STATUS_CYCLE_FAILED.format(str(e)))
     
     # USED
     def _execute_trading_cycle(self, cycle_start_time: float) -> None:
@@ -666,17 +537,14 @@ class TradingOrchestrator:
             Tuple of (news_list, symbols, market_data, portfolio).
         """
         # 1. Always get portfolio first - required for all operations
-        self._update_analysis_state(STAGE_PORTFOLIO_ANALYSIS, PROGRESS_PORTFOLIO_ANALYSIS, STATUS_ANALYZING_PORTFOLIO)
-        portfolio = get_portfolio_status(self.trader.upbit, api_key=self.openai_api_key)
+        portfolio = self.trader.get_portfolio_status(api_key=self.openai_api_key)
         
         # Validate portfolio
         if not portfolio or portfolio.get("total_balance", 0) <= MIN_PORTFOLIO_BALANCE:
             logger.error(LOG_INVALID_PORTFOLIO)
-            self._update_analysis_state(STAGE_ERROR, PROGRESS_START, STATUS_INVALID_PORTFOLIO)
             raise ValueError("Invalid portfolio data")
         
         # 2. Collect news
-        start_time = time.time()
         news_list = self.collect_news()
         
         if not news_list:
@@ -687,12 +555,15 @@ class TradingOrchestrator:
         symbols = self.extract_market_symbols(news_list) if news_list else []
         
         # Add portfolio holdings to symbols
+        # 뉴스 심볼: ['BTC', 'ETH']
+        # 보유 심볼: ['XRP', 'ETH', 'ADA']
+        # 최종 심볼: ['BTC', 'ETH', 'XRP', 'ADA'] (중복 제거됨)
         if portfolio and 'holdings' in portfolio:
             portfolio_symbols = list(portfolio['holdings'].keys())
             symbols = list(set(symbols + portfolio_symbols))  # Remove duplicates
         
         if not symbols:
-            logger.info(LOG_NO_SYMBOLS)
+            logger.info("No symbols extracted; aborting cycle")
             symbols = []
         
         # 4. Collect market data for all symbols (news + portfolio)
@@ -722,38 +593,31 @@ class TradingOrchestrator:
         Returns:
             Final trading decisions.
         """
-        # Mark which assets are held in the market data
-        held_assets = set(portfolio.get('assets', {}).keys())
-        for symbol in market_data:
-            market_data[symbol]['is_held'] = symbol in held_assets
+        # Get pattern learning lessons
+        trading_lessons = self._get_pattern_learning_lessons()
         
-        # Get initial decisions
-        self._update_analysis_state(STAGE_AI_ANALYSIS, PROGRESS_AI_ANALYSIS_START, STATUS_RUNNING_AI)
-        raw_decisions = self.ai_analyzer.analyze_market_data(news_list, market_data, portfolio)
+        # Get initial decisions with trading lessons
+        raw_decisions = self.ai_analyzer.analyze_market_data(
+            news_list, market_data, portfolio, trading_lessons
+        )
         
         # Apply trade history insights
-        self._apply_trade_history_insights(raw_decisions, market_data)
-        
-        # Apply pattern learning
-        self._apply_pattern_learning()
+        self._apply_trade_history_insights(raw_decisions)
         
         # Multi-AI validation
-        self._update_analysis_state(STAGE_AI_ANALYSIS, PROGRESS_MULTI_AI_VALIDATION, STATUS_VALIDATING_DECISIONS)
         validated_decisions = self.multi_ai_validator.cross_validate_multiple_decisions(
             raw_decisions, market_data, portfolio, news_list
         )
         
         # Apply adaptive risk management
-        self._update_analysis_state(STAGE_AI_ANALYSIS, PROGRESS_RISK_CALCULATION, STATUS_CALCULATING_POSITIONS)
         return self._apply_adaptive_risk_management(validated_decisions, portfolio, market_data)
     
     # USED
-    def _apply_trade_history_insights(self, decisions: Dict[str, Dict], market_data: Dict[str, Dict]) -> None:
+    def _apply_trade_history_insights(self, decisions: Dict[str, Dict]) -> None:
         """Apply trade history insights to influence AI decisions.
         
         Args:
             decisions: AI trading decisions.
-            market_data: Market data for symbols.
         """
         for symbol, decision in decisions.items():
             # Get historical success rate
@@ -776,11 +640,16 @@ class TradingOrchestrator:
         for warning in warnings:
             logger.warning(f"📊 Historical pattern warning: {warning}")
     
-    def _apply_pattern_learning(self) -> None:
-        """Apply learned patterns to AI analysis."""
-        self._update_analysis_state(STAGE_AI_ANALYSIS, PROGRESS_PATTERN_LEARNING, STATUS_APPLYING_PATTERNS)
+    # USED
+    def _get_pattern_learning_lessons(self) -> List[str]:
+        """Get learned patterns for AI analysis.
+        
+        Returns:
+            List of trading lessons.
+        """
         trading_lessons = self.pattern_learner.get_trading_lessons_for_prompt()
         logger.info(LOG_PATTERN_LESSONS.format(len(trading_lessons)))
+        return trading_lessons
     
     def _apply_adaptive_risk_management(
         self,
@@ -801,9 +670,19 @@ class TradingOrchestrator:
         final_decisions = {}
         
         for symbol, decision in validated_decisions.items():
+            action = decision.get('action')
+            
             # Apply position sizing for buy actions
-            if decision.get('action') in [ACTION_BUY, ACTION_BUY_MORE]:
+            if action in [ACTION_BUY, ACTION_BUY_MORE]:
                 decision = self._apply_position_sizing(decision, portfolio, market_data.get(symbol, {}))
+            
+            # Apply sell percentage calculation for partial sells
+            elif action == ACTION_PARTIAL_SELL:
+                decision = self._apply_sell_sizing(decision, portfolio, market_data.get(symbol, {}))
+            
+            # Add stop-loss recommendations for all positions
+            if action in [ACTION_BUY, ACTION_BUY_MORE, ACTION_HOLD]:
+                decision = self._add_stop_loss_recommendation(decision, market_data.get(symbol, {}))
             
             final_decisions[symbol] = decision
         
@@ -826,9 +705,10 @@ class TradingOrchestrator:
             Decision with position sizing applied.
         """
         # Get validation result for risk management
+        # Only use actual validation results, no fake defaults
         validation_result = {
-            'approved': decision.get('multi_ai_approved', True),
-            'risk_level': decision.get('risk_level', RISK_LEVEL_MEDIUM)
+            'approved': decision.get('multi_ai_approved'),
+            'risk_level': decision.get('risk_level')
         }
         
         # Calculate optimal position size
@@ -840,6 +720,194 @@ class TradingOrchestrator:
         
         # Apply circuit breaker limits
         decision = self._apply_circuit_breaker_limits(decision, portfolio)
+        
+        return decision
+    
+    def _apply_sell_sizing(
+        self,
+        decision: Dict,
+        portfolio: Dict,
+        market_data: Dict
+    ) -> Dict:
+        """Let AI determine sell percentage for partial sells.
+        
+        Args:
+            decision: Trading decision.
+            portfolio: Portfolio data.
+            market_data: Market data for the symbol.
+            
+        Returns:
+            Decision with AI-determined sell percentage.
+        """
+        # If AI already provided sell_percentage, use it
+        if 'sell_percentage' in decision:
+            return decision
+        
+        # Otherwise, ask AI to determine optimal sell percentage
+        try:
+            symbol = market_data.get('symbol', 'UNKNOWN')
+            current_price = market_data.get('current_price', 0)
+            
+            # Get asset info
+            assets = portfolio.get('assets', {})
+            asset_info = assets.get(symbol, {})
+            profit_loss = asset_info.get('profit_loss_percentage', 0)
+            
+            # Prepare context for AI
+            context = {
+                'symbol': symbol,
+                'current_price': current_price,
+                'profit_loss_percentage': profit_loss,
+                'risk_level': decision.get('risk_level', 'unknown'),
+                'market_data': market_data,
+                'original_reason': decision.get('reason', '')
+            }
+            
+            # Ask AI for optimal sell percentage
+            sell_percentage = self._get_ai_sell_percentage(context)
+            
+            decision['sell_percentage'] = sell_percentage
+            decision['sell_reason'] = f"AI-optimized partial sell: {sell_percentage:.1%}"
+            
+        except Exception as e:
+            logger.error(f"Failed to get AI sell percentage: {e}")
+            # Fallback to conservative 10% if AI fails
+            decision['sell_percentage'] = 0.10
+            decision['sell_reason'] = "Fallback partial sell: 10%"
+        
+        return decision
+    
+    def _get_ai_sell_percentage(self, context: Dict[str, Any]) -> float:
+        """Get AI-determined optimal sell percentage.
+        
+        Args:
+            context: Market and portfolio context.
+            
+        Returns:
+            Sell percentage (0.0-1.0).
+        """
+        prompt = f"""Based on the following trading context, determine the optimal percentage to sell:
+
+Symbol: {context['symbol']}
+Current Price: {context['current_price']:,.0f} KRW
+Profit/Loss: {context['profit_loss_percentage']:.2f}%
+Risk Level: {context['risk_level']}
+Original Decision Reason: {context['original_reason']}
+
+Market Indicators:
+- RSI: {context['market_data'].get('rsi_14', 'N/A')}
+- Volume Ratio: {context['market_data'].get('volume_ratio_24h_7d', 'N/A')}
+- Price Change 24h: {context['market_data'].get('price_24h_change', 'N/A')}%
+
+Determine the optimal sell percentage between 5% and 50%.
+Consider:
+1. If losing money, might need larger sell to cut losses
+2. If profitable, might want smaller sell to keep gains running
+3. Risk level and market conditions
+4. Technical indicators suggesting reversal
+
+Return ONLY a number between 0.05 and 0.50 (e.g., 0.15 for 15%).
+"""
+        
+        try:
+            result = self.ai_analyzer.openai_client.analyze_with_prompt(
+                prompt=prompt,
+                system_message="You are a trading expert. Return only a decimal number representing the sell percentage.",
+                temperature=0.3
+            )
+            
+            # Extract number from response
+            import re
+            match = re.search(r'0\.\d+', str(result))
+            if match:
+                percentage = float(match.group())
+                # Ensure within bounds
+                return max(0.05, min(0.50, percentage))
+            
+        except Exception as e:
+            logger.error(f"AI sell percentage determination failed: {e}")
+        
+        # Default fallback
+        return 0.10
+    
+    def _add_stop_loss_recommendation(
+        self,
+        decision: Dict,
+        market_data: Dict
+    ) -> Dict:
+        """Let AI determine stop-loss recommendations.
+        
+        Args:
+            decision: Trading decision.
+            market_data: Market data for the symbol.
+            
+        Returns:
+            Decision with AI-determined stop-loss recommendation.
+        """
+        # Skip if already has stop-loss recommendation
+        if 'stop_loss_recommendation' in decision:
+            return decision
+        
+        try:
+            symbol = market_data.get('symbol', 'UNKNOWN')
+            current_price = market_data.get('current_price', 0)
+            
+            prompt = f"""Determine optimal stop-loss for this position:
+
+Symbol: {symbol}
+Current Price: {current_price:,.0f} KRW
+Action: {decision.get('action', 'unknown')}
+Decision Reason: {decision.get('reason', '')}
+
+Market Data:
+- Volatility 7d: {market_data.get('volatility_7d', 'N/A')}
+- ATR 14: {market_data.get('atr_14', 'N/A')}
+- Support Level 1: {market_data.get('support_1', 'N/A')}
+- Support Level 2: {market_data.get('support_2', 'N/A')}
+- RSI 14: {market_data.get('rsi_14', 'N/A')}
+- Bollinger Lower: {market_data.get('bb_lower', 'N/A')}
+
+Determine the optimal stop-loss percentage (how far below current price).
+Consider:
+1. Market volatility and ATR
+2. Technical support levels
+3. Risk tolerance based on action type
+4. Market conditions
+
+Return ONLY a decimal number between 0.02 and 0.15 (e.g., 0.05 for 5% stop-loss).
+"""
+            
+            result = self.ai_analyzer.openai_client.analyze_with_prompt(
+                prompt=prompt,
+                system_message="You are a risk management expert. Return only a decimal number for stop-loss percentage.",
+                temperature=0.2
+            )
+            
+            # Extract number from response
+            import re
+            match = re.search(r'0\.\d+', str(result))
+            if match:
+                stop_loss_pct = float(match.group())
+                stop_loss_pct = max(0.02, min(0.15, stop_loss_pct))  # 2%-15% range
+            else:
+                stop_loss_pct = 0.05  # Default 5%
+            
+            stop_loss_price = current_price * (1 - stop_loss_pct)
+            
+            decision['stop_loss_recommendation'] = {
+                'price': stop_loss_price,
+                'percentage': stop_loss_pct,
+                'reason': f"AI-optimized stop-loss at {stop_loss_pct:.1%} below current price"
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get AI stop-loss recommendation: {e}")
+            # Conservative fallback
+            decision['stop_loss_recommendation'] = {
+                'price': current_price * 0.95,
+                'percentage': 0.05,
+                'reason': "Fallback stop-loss at 5% below current price"
+            }
         
         return decision
     
@@ -907,8 +975,6 @@ class TradingOrchestrator:
             portfolio: Portfolio data.
             market_data: Market data dictionary.
         """
-        self._update_analysis_state(STAGE_EXECUTION, PROGRESS_RISK_MONITORING, STATUS_MONITORING_RISKS)
-        
         recent_trades = self.data_store.get_recent_trades(
             limit=HEALTH_CHECK_RECENT_TRADES_LIMIT,
             hours=HEALTH_CHECK_TRADE_HOURS
@@ -973,7 +1039,6 @@ class TradingOrchestrator:
             portfolio: Portfolio data.
         """
         # Execute trades
-        self._update_analysis_state(STAGE_EXECUTION, PROGRESS_TRADE_EXECUTION, STATUS_EXECUTING_TRADES)
         self.execute_trading_decisions(decisions)
         
         # Post-trade analysis for stop-loss actions
@@ -992,8 +1057,6 @@ class TradingOrchestrator:
             market_data: Market data dictionary.
             portfolio: Portfolio data.
         """
-        self._update_analysis_state(STAGE_EXECUTION, PROGRESS_POST_TRADE_ANALYSIS, STATUS_ANALYZING_STOP_LOSS)
-        
         for symbol, decision in decisions.items():
             if self._is_stop_loss_decision(decision):
                 self._analyze_stop_loss_decision(symbol, decision, market_data, portfolio)
@@ -1091,12 +1154,6 @@ class TradingOrchestrator:
         self._monitor_portfolio_status(detailed=detailed)
         
         # Complete cycle
-        self._update_analysis_state(
-            STAGE_COMPLETED,
-            PROGRESS_COMPLETE,
-            STATUS_CYCLE_COMPLETED.format(len(decisions))
-        )
-        analysis_state.complete_cycle(len(decisions), analysis_duration)
         logger.info(LOG_CYCLE_COMPLETE)
     
     def _record_analysis_result(
@@ -1161,7 +1218,7 @@ class TradingOrchestrator:
             detailed: If True, show detailed report. If False, show summary only.
         """
         try:
-            portfolio = get_portfolio_status(self.trader.upbit, api_key=self.openai_api_key)
+            portfolio = self.trader.get_portfolio_status(api_key=self.openai_api_key)
             
             if not portfolio or not portfolio.get('assets'):
                 logger.info("📊 Portfolio is empty or unavailable")
@@ -1249,32 +1306,3 @@ class TradingOrchestrator:
             logger.error(f"Portfolio monitoring error: {e}")
     
     # USED
-    def _update_analysis_state(self, stage: str, progress: int, status: str) -> None:
-        """Update current analysis state for dashboard.
-        
-        Args:
-            stage: Current stage name.
-            progress: Progress percentage (0-100).
-            status: Status message.
-        """
-        self.current_analysis_state = {
-            'stage': stage,
-            'progress': progress,
-            'status': status,
-            'last_update': datetime.now().isoformat()
-        }
-        
-        # Also update global state for real-time dashboard
-        analysis_state.update_stage(stage, progress, status)
-    
-    # USED
-    def _get_action_korean(self, action: str) -> str:
-        """Convert action to Korean text.
-        
-        Args:
-            action: Trading action in English.
-            
-        Returns:
-            Korean translation of the action.
-        """
-        return ACTION_KOREAN_MAP.get(action, action)

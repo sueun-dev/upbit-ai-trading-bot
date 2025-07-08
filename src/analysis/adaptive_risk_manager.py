@@ -65,7 +65,6 @@ class AdaptiveRiskManager:
     def __init__(self) -> None:
         """Initialize the adaptive risk manager."""
         self.portfolio_heat = 0.0
-        logger.info("Adaptive Risk Manager initialized")
     
     def calculate_optimal_position_size(
         self,
@@ -97,7 +96,7 @@ class AdaptiveRiskManager:
             kelly_adjusted = self._apply_kelly_criterion(confidence, base_size)
             volatility_adjusted = self._adjust_for_volatility(kelly_adjusted, market_data)
             heat_adjusted = self._adjust_for_portfolio_heat(volatility_adjusted, portfolio)
-            ai_adjusted = self._apply_ai_validation_adjustment(heat_adjusted, ai_approved)
+            ai_adjusted = size * (1.0 if ai_approved else AI_REJECTION_MULTIPLIER)
             final_size = self._apply_position_limits(ai_adjusted, portfolio)
             
             # Convert to KRW amount
@@ -166,7 +165,7 @@ class AdaptiveRiskManager:
         total_balance = portfolio.get('total_balance', 0)
         krw_balance = portfolio.get('krw_balance', 0)
         
-        if total_balance <= 0:
+        if total_balance == 0:
             return 0.03  # Default 3%
         
         cash_ratio = krw_balance / total_balance
@@ -233,18 +232,7 @@ class AdaptiveRiskManager:
             return size * max(0.5, heat_reduction)
         
         return size
-    
-    def _apply_ai_validation_adjustment(self, size: float, ai_approved: bool) -> float:
-        """Apply adjustment based on AI validation result.
-        
-        Args:
-            size: Current position size ratio.
-            ai_approved: Whether AI validators approved the trade.
-            
-        Returns:
-            AI-adjusted position size ratio.
-        """
-        return size * (1.0 if ai_approved else AI_REJECTION_MULTIPLIER)
+
     
     def _apply_position_limits(self, size: float, portfolio: Dict[str, Any]) -> float:
         """Apply minimum/maximum position limits.
@@ -328,7 +316,7 @@ class AdaptiveRiskManager:
         total_balance = portfolio.get('total_balance', 0)
         krw_balance = portfolio.get('krw_balance', 0)
         
-        if total_balance <= 0:
+        if total_balance == 0:
             return 0
         
         crypto_value = total_balance - krw_balance
@@ -573,9 +561,14 @@ class AdaptiveRiskManager:
             start_of_day_value = 1_000_000
         
         for trade in trades:
-            trade_date = self._parse_trade_date(trade.get('timestamp', ''))
-            if trade_date == today:
-                today_loss += trade.get('profit_loss', 0)
+            timestamp = trade.get('timestamp', '')
+            if isinstance(timestamp, str):
+                try:
+                    trade_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).date()
+                    if trade_date == today:
+                        today_loss += trade.get('profit_loss', 0)
+                except (ValueError, AttributeError):
+                    pass
         
         return abs(today_loss) / start_of_day_value if today_loss < 0 else 0
     
@@ -591,10 +584,15 @@ class AdaptiveRiskManager:
         """
         # Find first trade of the day to estimate starting value
         for trade in sorted(trades, key=lambda x: x.get('timestamp', '')):
-            trade_date = self._parse_trade_date(trade.get('timestamp', ''))
-            if trade_date == target_date:
-                # Use the portfolio value before this trade
-                return trade.get('portfolio_value_before', 0)
+            timestamp = trade.get('timestamp', '')
+            if isinstance(timestamp, str):
+                try:
+                    trade_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).date()
+                    if trade_date == target_date:
+                        # Use the portfolio value before this trade
+                        return trade.get('portfolio_value_before', 0)
+                except (ValueError, AttributeError):
+                    pass
         
         # If no trades today, try to get current portfolio value
         try:
@@ -607,22 +605,6 @@ class AdaptiveRiskManager:
         
         return 0
     
-    def _parse_trade_date(self, timestamp: str) -> datetime.date:
-        """Parse date from trade timestamp.
-        
-        Args:
-            timestamp: ISO format timestamp string.
-            
-        Returns:
-            Date object or None if parsing fails.
-        """
-        if not isinstance(timestamp, str):
-            return None
-        
-        try:
-            return datetime.fromisoformat(timestamp.replace('Z', '+00:00')).date()
-        except (ValueError, AttributeError):
-            return None
     
     def _generate_sizing_reasoning(
         self,
@@ -733,5 +715,3 @@ class AdaptiveRiskManager:
         }
 
 
-# Create singleton instance
-adaptive_risk_manager = AdaptiveRiskManager()

@@ -66,28 +66,6 @@ class AILearningSystem:
         
         Args:
             days_back: Number of days to look back.
-            
-        Returns:
-            List of trade records.
-            
-        Returns Example:
-        [
-            {
-                'id': 123,
-                'timestamp': '2024-01-08T15:30:45',
-                'symbol': 'BTC',
-                'action': 'buy',
-                'confidence': 0.85,
-                'reason': 'Strong bullish pattern detected',
-                'price': 58500000.0,
-                'amount_krw': 100000.0,
-                'quantity': 0.00171,
-                'success': True,
-                'actual_return': 2.5,
-                'created_at': '2024-01-08 15:30:45'
-            }
-        ]
-
         """
         try:
             cutoff_date = datetime.now() - timedelta(days=days_back)
@@ -284,6 +262,7 @@ class AILearningSystem:
             "priority": "high"
         }
     
+    # USED
     def get_symbol_success_rate(self, symbol: str) -> float:
         """Get success rate for a specific symbol.
         
@@ -335,7 +314,7 @@ class AILearningSystem:
         
         return warnings
 
-    
+    # USED
     def get_trading_insights_for_symbol(self, symbol: str) -> Dict[str, Any]:
         """Get comprehensive trading insights for a specific symbol.
         

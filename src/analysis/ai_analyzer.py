@@ -48,8 +48,6 @@ class AIAnalyzer:
         Args:
             api_key: OpenAI API key
         """
-        if not api_key:
-            raise ValueError("OpenAI API key is required")
         self.openai_client = OpenAIClient(api_key=api_key)
         self.valid_symbols = self._load_valid_symbols()
         logger.info(f"AI Analyzer initialized with {len(self.valid_symbols)} valid symbols")
@@ -121,7 +119,8 @@ class AIAnalyzer:
         self,
         news_list: List[Dict[str, Any]],
         market_data: Dict[str, Dict[str, Any]],
-        portfolio: Dict[str, Any]
+        portfolio: Dict[str, Any],
+        trading_lessons: Optional[List[str]] = None
     ) -> Dict[str, Dict[str, Any]]:
         """Analyze market data and generate trading decisions.
         
@@ -129,6 +128,7 @@ class AIAnalyzer:
             news_list: List of news articles.
             market_data: Market data for each symbol.
             portfolio: Current portfolio status.
+            trading_lessons: Optional list of learned trading lessons.
             
         Returns:
             Dictionary of trading decisions for each symbol.
@@ -140,7 +140,7 @@ class AIAnalyzer:
         
         system_message = self._get_trading_analysis_system_message()
         prompt = self._create_trading_analysis_prompt(
-            portfolio_summary, market_summary, news_summary
+            portfolio_summary, market_summary, news_summary, trading_lessons
         )
         
         try:
@@ -170,7 +170,7 @@ class AIAnalyzer:
         lines = []
         for symbol, data in market_data.items():
             price = data.get('current_price', 0)
-            change = data.get('price_change_24h', 0)
+            change = data.get('price_24h_change', 0)
             volume = data.get('volume_24h', 0)
             
             # Include comprehensive analysis if available
@@ -338,21 +338,22 @@ class AIAnalyzer:
         """
         return f"""Extract cryptocurrency symbols from these news articles:
 
-{news_content}
+            {news_content}
 
-IMPORTANT: Look for ALL cryptocurrencies mentioned, including:
-- Full names: Bitcoin → BTC, Ethereum → ETH, Dogecoin → DOGE, Sonic → S
-- Possessive forms: Bitcoin's → BTC, Sonic's → S
-- Be thorough - extract EVERY cryptocurrency mentioned in titles and summaries
+            IMPORTANT: Look for ALL cryptocurrencies mentioned, including:
+            - Full names: Bitcoin → BTC, Ethereum → ETH, Dogecoin → DOGE, Sonic → S
+            - Possessive forms: Bitcoin's → BTC, Sonic's → S
+            - Be thorough - extract EVERY cryptocurrency mentioned in titles and summaries
 
-Examples:
-- "Bitcoin price rises" → BTC
-- "Ethereum's future" → ETH  
-- "Dogecoin Social Surge" → DOGE
-- "Sonic's $74.59M token unlock" → S
+            Examples:
+            - "Bitcoin price rises" → BTC
+            - "Ethereum's future" → ETH  
+            - "Dogecoin Social Surge" → DOGE
+            - "Sonic's $74.59M token unlock" → S
 
-Return a JSON array of ALL symbols found. Example: ["BTC", "ETH", "DOGE", "S"]
-If no symbols are found, return an empty array: []"""
+            Return a JSON array of ALL symbols found. Example: ["BTC", "ETH", "DOGE", "S"]
+            If no symbols are found, return an empty array: []
+        """
     
     # USED 
     def _parse_symbol_extraction_response(
@@ -479,6 +480,11 @@ If no symbols are found, return an empty array: []"""
         - reason: Clear explanation for the decision
         - confidence: Float between 0.0 and 1.0
         
+        For "partial_sell" actions ALSO provide:
+        - sell_percentage: Float between 0.05 and 0.50 (5% to 50% of holdings)
+          Example: 0.15 means sell 15% of current holdings
+          Consider profit/loss, risk level, and market conditions
+        
         IMPORTANT: Check portfolio holdings first. You cannot "hold" an asset you don't own.
         
         Consider:
@@ -493,7 +499,8 @@ If no symbols are found, return an empty array: []"""
         self,
         portfolio_summary: str,
         market_summary: str,
-        news_summary: str
+        news_summary: str,
+        trading_lessons: Optional[List[str]] = None
     ) -> str:
         """Create prompt for trading analysis.
         
@@ -501,10 +508,18 @@ If no symbols are found, return an empty array: []"""
             portfolio_summary: Portfolio status summary.
             market_summary: Market data summary.
             news_summary: News summary.
+            trading_lessons: Optional list of learned trading lessons.
             
         Returns:
             Prompt string.
         """
+        # Add trading lessons section if available
+        lessons_section = ""
+        if trading_lessons:
+            lessons_section = "\n\nLEARNED TRADING PATTERNS:\n"
+            for i, lesson in enumerate(trading_lessons, 1):
+                lessons_section += f"{i}. {lesson}\n"
+        
         return f"""Analyze this market data and provide trading decisions:
 
 PORTFOLIO STATUS:
@@ -514,7 +529,7 @@ MARKET DATA:
 {market_summary}
 
 RECENT NEWS:
-{news_summary}
+{news_summary}{lessons_section}
 
 CRITICAL RULES FOR TRADING DECISIONS:
 1. CHECK PORTFOLIO STATUS FIRST - See "CURRENTLY HELD ASSETS" section
@@ -525,13 +540,25 @@ CRITICAL RULES FOR TRADING DECISIONS:
    - Valid actions: "buy", "skip"  
    - CANNOT use: "hold", "sell_all", "partial_sell" (you don't own it!)
 4. NEVER suggest "hold" for an asset you don't currently own
+5. Consider the LEARNED TRADING PATTERNS when making decisions
 
 Provide trading decisions in JSON format:
 {{
     "SYMBOL": {{
         "action": "appropriate_action_based_on_holdings",
         "reason": "Clear explanation",
-        "confidence": 0.0-1.0
+        "confidence": 0.0-1.0,
+        "sell_percentage": 0.05-0.50  // ONLY for partial_sell actions
+    }}
+}}
+
+Example for partial_sell:
+{{
+    "BTC": {{
+        "action": "partial_sell",
+        "reason": "Taking profits after 30% gain, RSI overbought",
+        "confidence": 0.8,
+        "sell_percentage": 0.25
     }}
 }}"""
     

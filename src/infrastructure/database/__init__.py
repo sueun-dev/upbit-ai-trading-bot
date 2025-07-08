@@ -1,9 +1,4 @@
-"""Database infrastructure module.
-
-This module provides database utilities and helpers for the trading system.
-"""
-
-import os
+"""Database infrastructure module."""
 from pathlib import Path
 
 

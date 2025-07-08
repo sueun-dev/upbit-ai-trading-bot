@@ -112,9 +112,13 @@ class PostTradeAnalyzer:
     - Performance metrics calculation
     """
     
-    def __init__(self) -> None:
-        """Initialize the post-trade analyzer."""
-        self.openai_client = None  # Will be set by initialize()
+    def __init__(self, api_key: str) -> None:
+        """Initialize the post-trade analyzer.
+        
+        Args:
+            api_key: OpenAI API key
+        """
+        self.openai_client = OpenAIClient(api_key=api_key)
         self.severity_thresholds = {
             SEVERITY_MINOR: SEVERITY_MINOR_THRESHOLD,
             SEVERITY_MODERATE: SEVERITY_MODERATE_THRESHOLD,
@@ -122,15 +126,6 @@ class PostTradeAnalyzer:
             SEVERITY_CRITICAL: SEVERITY_CRITICAL_THRESHOLD
         }
         logger.info("Post-Trade Analyzer initialized")
-    
-    # USED
-    def initialize(self, api_key: str) -> None:
-        """Initialize with API key.
-        
-        Args:
-            api_key: OpenAI API key
-        """
-        self.openai_client = OpenAIClient(api_key=api_key)
     
     def analyze_stop_loss_decision(
         self,
@@ -362,7 +357,7 @@ class PostTradeAnalyzer:
             Market analysis dictionary.
         """
         return {
-            'price_trend_24h': market_data.get('price_change_24h', 0),
+            'price_trend_24h': market_data.get('price_24h_change', 0),
             'volume_ratio': market_data.get('volume_ratio', 1),
             'rsi': market_data.get('rsi', {}).get('rsi_14', DEFAULT_RSI),
             'volatility': self._calculate_volatility(market_data),
@@ -396,7 +391,7 @@ class PostTradeAnalyzer:
         Returns:
             Sentiment string.
         """
-        price_change = market_data.get('price_change_24h', 0)
+        price_change = market_data.get('price_24h_change', 0)
         volume_ratio = market_data.get('volume_ratio', 1)
         
         if (price_change < PANIC_SELLING_PRICE_THRESHOLD and 
@@ -857,7 +852,9 @@ decision_quality, warning_signs, avoidable, key_lesson"""
         entry_slippage = self._calculate_entry_slippage(entry_data)
         
         # Determine overall quality
-        overall_quality = self._determine_overall_quality(entry_timing, exit_timing)
+        if entry_timing == QUALITY_GOOD and exit_timing == QUALITY_GOOD:
+            overall_quality =  QUALITY_GOOD
+        overall_quality =  QUALITY_AVERAGE
         
         return {
             'entry_timing': entry_timing,
@@ -906,20 +903,6 @@ decision_quality, warning_signs, avoidable, key_lesson"""
         if expected_entry > 0:
             return abs(actual_entry - expected_entry) / expected_entry
         return 0
-    
-    def _determine_overall_quality(self, entry_timing: str, exit_timing: str) -> str:
-        """Determine overall execution quality.
-        
-        Args:
-            entry_timing: Entry timing quality.
-            exit_timing: Exit timing quality.
-            
-        Returns:
-            Overall quality string.
-        """
-        if entry_timing == QUALITY_GOOD and exit_timing == QUALITY_GOOD:
-            return QUALITY_GOOD
-        return QUALITY_AVERAGE
     
     def _identify_success_factors(
         self,
@@ -1229,5 +1212,3 @@ decision_quality, warning_signs, avoidable, key_lesson"""
         }
 
 
-# Create singleton instance
-post_trade_analyzer = PostTradeAnalyzer()

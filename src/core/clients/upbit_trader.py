@@ -17,7 +17,6 @@ from src.infrastructure.config.settings import (
     PARTIAL_SELL_RATIO
 )
 from src.shared.utils.helpers import get_formatted_datetime
-from .circuit_breaker import CircuitBreaker
 
 # Constants for trading actions
 ACTION_HOLD = "hold"
@@ -29,11 +28,6 @@ ACTION_PARTIAL_SELL = "partial_sell"
 # Valid trading actions
 VALID_ACTIONS = {ACTION_HOLD, ACTION_BUY, ACTION_BUY_MORE, ACTION_SELL_ALL, ACTION_PARTIAL_SELL}
 BUY_ACTIONS = {ACTION_BUY, ACTION_BUY_MORE}
-
-# Market constants
-FIAT_CURRENCY = "KRW"
-MARKET_CODE_PREFIX = "KRW-"
-MARKET_CODE_SEPARATOR = "-"
 
 # Confidence calculation constants
 DEFAULT_CONFIDENCE = 0.5
@@ -88,10 +82,8 @@ class UpbitTrader:
             logger.error(f"Failed to initialize Upbit client: {e}")
             raise
         
-        markets = pyupbit.get_tickers(fiat=FIAT_CURRENCY)
-        self.available_symbols = {m.split(MARKET_CODE_SEPARATOR)[1] for m in markets}
-        
-        self.circuit_breaker = CircuitBreaker()
+        markets = pyupbit.get_tickers(fiat="KRW")
+        self.available_symbols = {m.split("-")[1] for m in markets}
         
         logger.info("Upbit trader initialized successfully")
     
@@ -154,7 +146,7 @@ class UpbitTrader:
         Returns:
             Market code (e.g., "KRW-BTC").
         """
-        return f"{MARKET_CODE_PREFIX}{symbol}"
+        return f"{"KRW-"}{symbol}"
     
     def _execute_buy_order(self, market_code: str, krw_amount: float) -> None:
         """Execute the buy order on Upbit.
@@ -269,9 +261,6 @@ class UpbitTrader:
         current_date, current_time = get_formatted_datetime()
         logger.info(LOG_TRADE_EXECUTION.format(action, symbol, current_date, current_time, reason))
         
-        # Check circuit breaker for non-hold actions
-        if not self._check_circuit_breaker(symbol, action):
-            return False
         
         # Handle buy_more validation
         action = self._validate_buy_more_action(symbol, action, decision_data)
@@ -279,26 +268,9 @@ class UpbitTrader:
         # Execute the trade
         trade_result = self._dispatch_trade_action(symbol, action, decision_data)
         
-        # Record trade result for circuit breaker
-        if trade_result:
-            self._record_trade_for_circuit_breaker(symbol, action, decision_data)
         
         return trade_result
     
-    def _check_circuit_breaker(self, symbol: str, action: str) -> bool:
-        """Check if circuit breaker allows the trade.
-        
-        Args:
-            symbol: Cryptocurrency symbol.
-            action: Trading action.
-            
-        Returns:
-            True if trade is allowed, False otherwise.
-        """
-        if action != ACTION_HOLD and not self.circuit_breaker.can_trade():
-            logger.warning(LOG_CIRCUIT_BREAKER_PREVENTED.format(symbol, action))
-            return False
-        return True
     
     def _validate_buy_more_action(
         self,
@@ -362,7 +334,8 @@ class UpbitTrader:
             return self._execute_sell_all(symbol)
         
         if action == ACTION_PARTIAL_SELL:
-            return self._execute_partial_sell(symbol)
+            sell_percentage = decision_data.get('sell_percentage') if decision_data else None
+            return self._execute_partial_sell(symbol, sell_percentage)
         
         # Unknown action
         logger.error(LOG_UNKNOWN_ACTION.format(action, symbol))
@@ -379,54 +352,6 @@ class UpbitTrader:
         """
         logger.info(LOG_HOLDING.format(symbol))
         return True
-    
-    def _record_trade_for_circuit_breaker(
-        self,
-        symbol: str,
-        action: str,
-        decision_data: Optional[Dict[str, Any]]
-    ) -> None:
-        """Record trade result for circuit breaker monitoring.
-        
-        Args:
-            symbol: Cryptocurrency symbol.
-            action: Trading action.
-            decision_data: Decision data containing confidence.
-        """
-        # Extract confidence and estimate profit/loss
-        confidence = self._extract_confidence(decision_data)
-        estimated_profit_loss = self._estimate_profit_loss(confidence)
-        
-        # Determine trade amount
-        amount_krw = self._get_trade_amount(action)
-        
-        # Record the trade
-        self.circuit_breaker.record_trade(symbol, action, estimated_profit_loss, amount_krw)
-    
-    def _extract_confidence(self, decision_data: Optional[Dict[str, Any]]) -> float:
-        """Extract confidence from decision data.
-        
-        Args:
-            decision_data: Decision data dictionary.
-            
-        Returns:
-            Confidence value between 0 and 1.
-        """
-        if decision_data:
-            return decision_data.get("confidence", DEFAULT_CONFIDENCE)
-        return DEFAULT_CONFIDENCE
-    
-    def _estimate_profit_loss(self, confidence: float) -> float:
-        """Estimate profit/loss based on confidence.
-        
-        Args:
-            confidence: Confidence value between 0 and 1.
-            
-        Returns:
-            Estimated profit/loss between -1 and 1.
-        """
-        # Simple linear mapping: confidence 0.5 = 0%, 0 = -100%, 1 = +100%
-        return (confidence - CONFIDENCE_OFFSET) * CONFIDENCE_MULTIPLIER
     
     def _get_trade_amount(self, action: str) -> float:
         """Get trade amount based on action.
@@ -502,7 +427,7 @@ class UpbitTrader:
         Returns:
             True if position exists, False otherwise.
         """
-        portfolio = get_portfolio_status(self.upbit)
+        portfolio = self.get_portfolio_status()
         return symbol in portfolio["assets"]
     
     def _calculate_averaging_amount(self, avg_analysis: Dict[str, Any]) -> float:
@@ -535,11 +460,13 @@ class UpbitTrader:
             return False
         return True
 
-    def _execute_partial_sell(self, symbol: str) -> bool:
-        """Sell a fixed ratio of current holdings.
+    def _execute_partial_sell(self, symbol: str, sell_percentage: Optional[float] = None) -> bool:
+        """Sell a percentage of current holdings.
         
         Args:
             symbol: Cryptocurrency symbol.
+            sell_percentage: Optional percentage to sell (0.0-1.0). 
+                           Uses PARTIAL_SELL_RATIO if not provided.
             
         Returns:
             True if sell was successful, False otherwise.
@@ -548,8 +475,13 @@ class UpbitTrader:
         if balance is None:
             return False
         
-        amount = balance * PARTIAL_SELL_RATIO
-        logger.info(LOG_PARTIAL_SELL.format(symbol, amount))
+        # Use provided percentage or default
+        percentage = sell_percentage if sell_percentage is not None else PARTIAL_SELL_RATIO
+        # Ensure percentage is within reasonable bounds
+        percentage = max(0.05, min(0.5, percentage))  # Between 5% and 50%
+        
+        amount = balance * percentage
+        logger.info(f"💰 Executing partial sell for {symbol}: {amount:.6f} ({percentage:.1%} of holdings)")
         
         return self.sell_market_order(symbol, amount)
 
@@ -578,10 +510,21 @@ class UpbitTrader:
         Returns:
             Balance amount or None if not found.
         """
-        portfolio = get_portfolio_status(self.upbit)
+        portfolio = self.get_portfolio_status()
         
         if symbol not in portfolio["assets"]:
             logger.error(f"No {symbol} position found in portfolio")
             return None
         
         return portfolio["assets"][symbol]["balance"]
+    
+    def get_portfolio_status(self, api_key: str = None) -> Dict[str, Any]:
+        """Get portfolio status through portfolio manager.
+        
+        Args:
+            api_key: Optional OpenAI API key for AI analysis.
+            
+        Returns:
+            Portfolio status dictionary.
+        """
+        return get_portfolio_status(self.upbit, api_key=api_key)

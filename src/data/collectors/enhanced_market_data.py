@@ -43,12 +43,6 @@ class EnhancedMarketData:
     vwap_24h: float
     vwap_7d: float
     
-    # Market Cap & Supply
-    market_cap_krw: Optional[float]
-    market_cap_rank: Optional[int]
-    circulating_supply: Optional[float]
-    total_supply: Optional[float]
-    max_supply: Optional[float]
     
     # Technical Indicators
     rsi_14: float
@@ -113,6 +107,7 @@ class EnhancedMarketDataCollector:
         self.coinmarketcap_api_key = None  # Add if available
         self.coingecko_base_url = "https://api.coingecko.com/api/v3"
         
+    # USED
     def get_enhanced_market_data(self, symbol: str) -> Optional[EnhancedMarketData]:
         """Get comprehensive market data for a cryptocurrency.
         
@@ -130,8 +125,6 @@ class EnhancedMarketDataCollector:
             
             # Get current price
             current_price = pyupbit.get_current_price(market_code)
-            if not current_price:
-                raise ValueError(f"Failed to get current price for {symbol}")
             
             # Get price and volume data
             price_data = self._get_price_data(market_code, current_price)
@@ -140,8 +133,6 @@ class EnhancedMarketDataCollector:
             # Get technical indicators
             technical_data = self._get_technical_indicators(market_code)
             
-            # Get market cap and supply data
-            fundamental_data = self._get_fundamental_data(symbol)
             
             # Get support/resistance levels
             support_resistance = self._get_support_resistance_levels(market_code)
@@ -165,9 +156,6 @@ class EnhancedMarketDataCollector:
                 # Volume Analysis
                 **volume_data,
                 
-                # Market Cap & Supply
-                **fundamental_data,
-                
                 # Technical Indicators
                 **technical_data,
                 
@@ -188,6 +176,7 @@ class EnhancedMarketDataCollector:
             logger.error("Failed to collect enhanced market data for %s: %s", symbol, e)
             return None
     
+    # USED
     def _get_price_data(self, market_code: str, current_price: float) -> Dict[str, float]:
         """Get comprehensive price analysis data."""
         try:
@@ -518,19 +507,6 @@ class EnhancedMarketDataCollector:
         
         return k_val, d_val
     
-    def _get_fundamental_data(self, symbol: str) -> Dict[str, Optional[float]]:
-        """Get fundamental data.
-        
-        Note: External API integration would be needed for real market cap data.
-        Currently returns None values to indicate data not available.
-        """
-        return {
-            'market_cap_krw': None,
-            'market_cap_rank': None,
-            'circulating_supply': None,
-            'total_supply': None,
-            'max_supply': None,
-        }
     
     def _get_support_resistance_levels(self, market_code: str) -> Dict[str, float]:
         """Calculate support and resistance levels."""

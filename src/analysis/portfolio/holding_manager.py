@@ -19,30 +19,26 @@ def record_purchase(symbol: str, price: float, amount_krw: float = None) -> None
         price: Purchase price
         amount_krw: Amount in KRW (optional)
     """
-    try:
-        # Load existing holdings
-        holdings = load_holdings()
-        
-        # Add new purchase record
-        if symbol not in holdings:
-            holdings[symbol] = []
-        
-        purchase_record = {
-            "timestamp": datetime.now().isoformat(),
-            "price": price,
-            "amount_krw": amount_krw,
-            "type": "buy"
-        }
-        
-        holdings[symbol].append(purchase_record)
-        
-        # Save updated holdings
-        save_holdings(holdings)
-        
-        logger.info("Recorded purchase: %s at %s KRW", symbol, price)
-        
-    except Exception as e:
-        logger.error("Failed to record purchase for %s: %s", symbol, e)
+    # Load existing holdings
+    holdings = load_holdings()
+    
+    # Add new purchase record
+    if symbol not in holdings:
+        holdings[symbol] = []
+    
+    purchase_record = {
+        "timestamp": datetime.now().isoformat(),
+        "price": price,
+        "amount_krw": amount_krw,
+        "type": "buy"
+    }
+    
+    holdings[symbol].append(purchase_record)
+    
+    # Save updated holdings
+    save_holdings(holdings)
+    
+    logger.info("Recorded purchase: %s at %s KRW", symbol, price)
 
 
 def load_holdings() -> Dict[str, List[Dict]]:
@@ -51,14 +47,10 @@ def load_holdings() -> Dict[str, List[Dict]]:
     Returns:
         Dictionary of holdings by symbol
     """
-    try:
-        if os.path.exists(HOLDINGS_FILE):
-            with open(HOLDINGS_FILE, 'r') as f:
-                return json.load(f)
-        return {}
-    except Exception as e:
-        logger.error("Failed to load holdings: %s", e)
-        return {}
+    if os.path.exists(HOLDINGS_FILE):
+        with open(HOLDINGS_FILE, 'r') as f:
+            return json.load(f)
+    return {}
 
 
 def save_holdings(holdings: Dict[str, List[Dict]]) -> None:

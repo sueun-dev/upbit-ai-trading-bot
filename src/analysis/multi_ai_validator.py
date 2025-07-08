@@ -53,9 +53,13 @@ class MultiAIValidator:
     - Final Arbitrator
     """
     
-    def __init__(self) -> None:
-        """Initialize the multi-AI validator."""
-        self.openai_client = None  # Will be set by initialize()
+    def __init__(self, api_key: str) -> None:
+        """Initialize the multi-AI validator.
+        
+        Args:
+            api_key: OpenAI API key
+        """
+        self.openai_client = OpenAIClient(api_key=api_key)
         self.validators = {
             VALIDATOR_CONSERVATIVE: self._validate_conservative,
             VALIDATOR_AGGRESSIVE: self._validate_aggressive,
@@ -64,14 +68,7 @@ class MultiAIValidator:
         }
         logger.info(f"Multi-AI Validator initialized with {len(self.validators)} validation perspectives")
     
-    def initialize(self, api_key: str) -> None:
-        """Initialize with API key.
-        
-        Args:
-            api_key: OpenAI API key
-        """
-        self.openai_client = OpenAIClient(api_key=api_key)
-    
+    # USED
     def cross_validate_multiple_decisions(
         self,
         decisions: Dict[str, Dict[str, Any]],
@@ -94,50 +91,25 @@ class MultiAIValidator:
         
         for symbol, decision in decisions.items():
             try:
-                validated_decision = self.validate_single_decision(
+                # Collect validations from different perspectives
+                validations = self._collect_validations(
                     symbol, decision, market_data.get(symbol, {}), portfolio, news_list
                 )
-                validated_decisions[symbol] = validated_decision
+                
+                # Aggregate validations
+                final_decision = self._aggregate_validations(decision, validations)
+                
+                # Add validation metadata
+                final_decision['validation_results'] = validations
+                final_decision['validators_agreed'] = self._check_consensus(validations)
+                
+                validated_decisions[symbol] = final_decision
             except Exception as e:
                 logger.error(f"Failed to validate decision for {symbol}: {e}")
                 # Keep original decision if validation fails
                 validated_decisions[symbol] = decision
         
         return validated_decisions
-    
-    def validate_single_decision(
-        self,
-        symbol: str,
-        decision: Dict[str, Any],
-        market_data: Dict[str, Any],
-        portfolio: Dict[str, Any],
-        news_list: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Validate a single trading decision using multiple AI perspectives.
-        
-        Args:
-            symbol: Trading symbol.
-            decision: Original trading decision.
-            market_data: Market data for the symbol.
-            portfolio: Current portfolio status.
-            news_list: Recent news articles.
-            
-        Returns:
-            Validated and potentially modified decision.
-        """
-        # Collect validations from different perspectives
-        validations = self._collect_validations(
-            symbol, decision, market_data, portfolio, news_list
-        )
-        
-        # Aggregate validations
-        final_decision = self._aggregate_validations(decision, validations)
-        
-        # Add validation metadata
-        final_decision['validation_results'] = validations
-        final_decision['validators_agreed'] = self._check_consensus(validations)
-        
-        return final_decision
     
     def _collect_validations(
         self,
@@ -188,7 +160,6 @@ class MultiAIValidator:
         decision: Dict[str, Any],
         market_data: Dict[str, Any],
         portfolio: Dict[str, Any],
-        news_list: List[Dict[str, Any]]  # pylint: disable=unused-argument
     ) -> Dict[str, Any]:
         """Conservative risk assessor perspective."""
         system_message = """You are a conservative risk manager for a cryptocurrency trading system.
@@ -198,16 +169,11 @@ class MultiAIValidator:
         
         prompt = self._create_conservative_prompt(symbol, decision, market_data, portfolio)
         
-        try:
-            result = self.openai_client.analyze_with_prompt(
-                prompt=prompt,
-                system_message=system_message,
-                temperature=CONSERVATIVE_TEMPERATURE
-            )
-            return result
-        except Exception as e:
-            logger.error(f"Conservative validation failed: {e}")
-            return self._get_default_validation()
+        return self.openai_client.analyze_with_prompt(
+            prompt=prompt,
+            system_message=system_message,
+            temperature=CONSERVATIVE_TEMPERATURE
+        )
     
     def _validate_aggressive(
         self,
@@ -225,16 +191,11 @@ class MultiAIValidator:
         
         prompt = self._create_aggressive_prompt(symbol, decision, market_data, news_list)
         
-        try:
-            result = self.openai_client.analyze_with_prompt(
-                prompt=prompt,
-                system_message=system_message,
-                temperature=AGGRESSIVE_TEMPERATURE
-            )
-            return result
-        except Exception as e:
-            logger.error(f"Aggressive validation failed: {e}")
-            return self._get_default_validation()
+        return self.openai_client.analyze_with_prompt(
+            prompt=prompt,
+            system_message=system_message,
+            temperature=AGGRESSIVE_TEMPERATURE
+        )
     
     def _validate_technical(
         self,
@@ -251,16 +212,11 @@ class MultiAIValidator:
         
         prompt = self._create_technical_prompt(symbol, decision, market_data)
         
-        try:
-            result = self.openai_client.analyze_with_prompt(
-                prompt=prompt,
-                system_message=system_message,
-                temperature=TECHNICAL_TEMPERATURE
-            )
-            return result
-        except Exception as e:
-            logger.error(f"Technical validation failed: {e}")
-            return self._get_default_validation()
+        return self.openai_client.analyze_with_prompt(
+            prompt=prompt,
+            system_message=system_message,
+            temperature=TECHNICAL_TEMPERATURE
+        )
     
     def _validate_sentiment(
         self,
@@ -277,16 +233,11 @@ class MultiAIValidator:
         
         prompt = self._create_sentiment_prompt(symbol, decision, market_data, news_list)
         
-        try:
-            result = self.openai_client.analyze_with_prompt(
-                prompt=prompt,
-                system_message=system_message,
-                temperature=SENTIMENT_TEMPERATURE
-            )
-            return result
-        except Exception as e:
-            logger.error(f"Sentiment validation failed: {e}")
-            return self._get_default_validation()
+        return self.openai_client.analyze_with_prompt(
+            prompt=prompt,
+            system_message=system_message,
+            temperature=SENTIMENT_TEMPERATURE
+        )
     
     def _aggregate_validations(
         self,
@@ -424,17 +375,17 @@ class MultiAIValidator:
         """
         return f"""Review this trading decision for {symbol}:
         
-Decision: {decision.get('action')}
-Reason: {decision.get('reason')}
-Confidence: {decision.get('confidence', DEFAULT_CONFIDENCE)}
-
-Current Price: {market_data.get('current_price', 0):,.0f} KRW
-24h Change: {market_data.get('price_change_24h', 0):.2f}%
-RSI: {market_data.get('rsi', {}).get('rsi_14', 50)}
-Portfolio Value: {portfolio.get('total_balance', 0):,.0f} KRW
-
-Should this trade be approved from a conservative perspective?
-Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
+            Decision: {decision.get('action')}
+            Reason: {decision.get('reason')}
+            Confidence: {decision.get('confidence', DEFAULT_CONFIDENCE)}
+            
+            Current Price: {market_data.get('current_price', 0):,.0f} KRW
+            24h Change: {market_data.get('price_24h_change', 0):.2f}%
+            RSI: {market_data.get('rsi', {}).get('rsi_14', 50)}
+            Portfolio Value: {portfolio.get('total_balance', 0):,.0f} KRW
+            
+            Should this trade be approved from a conservative perspective?
+            Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
     
     def _create_aggressive_prompt(
         self,
@@ -458,19 +409,18 @@ Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "e
         
         return f"""Review this trading decision for {symbol}:
         
-Decision: {decision.get('action')}
-Reason: {decision.get('reason')}
-Confidence: {decision.get('confidence', DEFAULT_CONFIDENCE)}
+            Decision: {decision.get('action')}
+            Reason: {decision.get('reason')}
+            Confidence: {decision.get('confidence', DEFAULT_CONFIDENCE)}
 
-Current Price: {market_data.get('current_price', 0):,.0f} KRW
-24h Change: {market_data.get('price_change_24h', 0):.2f}%
-Volume Ratio: {market_data.get('volume_ratio', 1.0):.2f}
-Market Cap Rank: {market_data.get('market_cap_rank', 'N/A')}
+            Current Price: {market_data.get('current_price', 0):,.0f} KRW
+            24h Change: {market_data.get('price_24h_change', 0):.2f}%
+            Volume Ratio: {market_data.get('volume_ratio', 1.0):.2f}
 
-Recent News Sentiment: {news_sentiment}
+            Recent News Sentiment: {news_sentiment}
 
-Should this trade be approved from an aggressive growth perspective?
-Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
+            Should this trade be approved from an aggressive growth perspective?
+            Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
     
     def _create_technical_prompt(
         self,
@@ -495,23 +445,23 @@ Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "e
         
         return f"""Review this trading decision for {symbol} from a technical perspective:
         
-Decision: {decision.get('action')}
-Confidence: {decision.get('confidence', DEFAULT_CONFIDENCE)}
+            Decision: {decision.get('action')}
+            Confidence: {decision.get('confidence', DEFAULT_CONFIDENCE)}
 
-Technical Indicators:
-- Price: {market_data.get('current_price', 0):,.0f} KRW
-- RSI(14): {rsi.get('rsi_14', 50)}
-- RSI(30): {rsi.get('rsi_30', 50)}
-- MACD: {macd.get('macd', 0):.2f}
-- Signal: {macd.get('signal', 0):.2f}
-- Histogram: {macd.get('histogram', 0):.2f}
-- Upper BB: {bollinger.get('upper', 0):,.0f}
-- Lower BB: {bollinger.get('lower', 0):,.0f}
-- 24h High: {market_data.get('high_24h', 0):,.0f}
-- 24h Low: {market_data.get('low_24h', 0):,.0f}
+            Technical Indicators:
+            - Price: {market_data.get('current_price', 0):,.0f} KRW
+            - RSI(14): {rsi.get('rsi_14', 50)}
+            - RSI(30): {rsi.get('rsi_30', 50)}
+            - MACD: {macd.get('macd', 0):.2f}
+            - Signal: {macd.get('signal', 0):.2f}
+            - Histogram: {macd.get('histogram', 0):.2f}
+            - Upper BB: {bollinger.get('upper', 0):,.0f}
+            - Lower BB: {bollinger.get('lower', 0):,.0f}
+            - 24h High: {market_data.get('high_24h', 0):,.0f}
+            - 24h Low: {market_data.get('low_24h', 0):,.0f}
 
-Based purely on technical analysis, should this trade be approved?
-Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
+            Based purely on technical analysis, should this trade be approved?
+            Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
     
     def _create_sentiment_prompt(
         self,
@@ -536,19 +486,19 @@ Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "e
         
         return f"""Review this trading decision for {symbol} from a sentiment perspective:
         
-Decision: {decision.get('action')}
-Reason: {decision.get('reason')}
+            Decision: {decision.get('action')}
+            Reason: {decision.get('reason')}
 
-Market Context:
-- 24h Price Change: {market_data.get('price_change_24h', 0):.2f}%
-- 7d Price Change: {market_data.get('price_change_7d', 0):.2f}%
-- Volume Trend: {volume_trend}
+            Market Context:
+            - 24h Price Change: {market_data.get('price_24h_change', 0):.2f}%
+            - 7d Price Change: {market_data.get('price_change_7d', 0):.2f}%
+            - Volume Trend: {volume_trend}
 
-Recent News:
-{news_summary}
+            Recent News:
+            {news_summary}
 
-Based on market sentiment and news, should this trade be approved?
-Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
+            Based on market sentiment and news, should this trade be approved?
+            Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
     
     def _analyze_news_sentiment(self, news_list: List[Dict[str, Any]]) -> str:
         """Analyze overall news sentiment.
@@ -590,5 +540,3 @@ Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "e
         return "High" if volume_ratio > HIGH_VOLUME_THRESHOLD else "Normal"
 
 
-# Create singleton instance
-multi_ai_validator = MultiAIValidator()

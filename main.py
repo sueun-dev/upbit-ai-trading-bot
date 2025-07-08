@@ -1,8 +1,5 @@
 import logging
-import os
-import sys
 import time
-from datetime import datetime
 
 from src.analysis.ai_learning.ai_learning_system import AILearningSystem
 from src.core.orchestrator.trading_orchestrator import TradingOrchestrator
@@ -12,6 +9,7 @@ from src.infrastructure.config.settings import (
     UPBIT_ACCESS_KEY,
     UPBIT_SECRET_KEY,
 )
+from src.shared.utils.helpers import setup_logging
 
 # Constants
 MAX_CONSECUTIVE_ERRORS = 5
@@ -20,27 +18,17 @@ AI_LEARNING_DAYS_BACK = 30
 # Module-level logger
 logger = logging.getLogger(__name__)
 
-def setup_logging() -> None:
-    """Configure logging settings for the application.
-    
-    Creates logs directory and sets up both console and file logging handlers.
-    """
-    os.makedirs('logs', exist_ok=True)
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(f'logs/{datetime.now().strftime("%Y-%m-%d")}.log')
-        ]
-    )
-
 def initialize_trade_history_analyzer() -> AILearningSystem:
     """Initialize trade history analyzer with past data.
     
     Returns:
-        Initialized AILearningSystem instance.
+        AILearningSystem instance. On first run (empty database):
+        - lessons_learned: []
+        - pattern_statistics: {}
+        
+        With trade history:
+        - lessons_learned: List with 2 insights (success_rate, failure_analysis)
+        - pattern_statistics: Dict with per-symbol success rates
     """
     try:
         analyzer = AILearningSystem()
@@ -60,11 +48,6 @@ def initialize_trade_history_analyzer() -> AILearningSystem:
                 metrics = insight['metrics']
                 if metrics['total_failures'] > 0:
                     logger.info(f"⚠️ Failure rate: {metrics['failure_rate']}% - Most common: {insight['most_common_reason']}")
-        
-        # Log initial warnings
-        warnings = analyzer.get_failure_warnings()
-        for warning in warnings:
-            logger.warning(warning)
         
         return analyzer
         
