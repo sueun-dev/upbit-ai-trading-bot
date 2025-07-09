@@ -61,7 +61,7 @@ class AdaptiveRiskManager:
     Attributes:
         portfolio_heat: Current portfolio heat level (0.0 to 1.0).
     """
-    
+    # USED
     def __init__(self) -> None:
         """Initialize the adaptive risk manager."""
         self.portfolio_heat = 0.0

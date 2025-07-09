@@ -59,16 +59,15 @@ class DataStore:
     """Manages all trading data, AI analysis results, and system metrics."""
     
     # USED
-    def __init__(self, db_path: str = "trading_data.db"):
-        self.db_path = db_path
+    def __init__(self):
+        self.db_path = "trading_data.db"
         self.lock = threading.Lock()
         self._initialize_database()
         
     # USED
     def _initialize_database(self):
         """Initialize SQLite database with required tables."""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
                 # Trading records table
@@ -167,11 +166,6 @@ class DataStore:
                 """)
                 
                 conn.commit()
-                logger.info("Database initialized successfully")
-                
-        except Exception as e:
-            logger.error(f"Failed to initialize database: {e}")
-            raise
     
     def record_trade(self, trade: TradeRecord) -> int:
         """Record a trading decision and execution.

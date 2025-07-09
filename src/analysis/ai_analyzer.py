@@ -42,34 +42,10 @@ class AIAnalyzer:
     - Analyzing market data for trading decisions
     - Generating trading recommendations
     """
+    # USED
     def __init__(self, api_key: Optional[str] = None) -> None:
-        """Initialize AI analyzer.
-        
-        Args:
-            api_key: OpenAI API key
-        """
+        """Initialize AI analyzer."""
         self.openai_client = OpenAIClient(api_key=api_key)
-        self.valid_symbols = self._load_valid_symbols()
-        logger.info(f"AI Analyzer initialized with {len(self.valid_symbols)} valid symbols")
-    
-    def _load_valid_symbols(self) -> set:
-        """Load valid cryptocurrency symbols from Upbit.
-        
-        Returns:
-            Set of valid cryptocurrency symbols.
-            
-        Raises:
-            Exception: If failed to load symbols from Upbit.
-        """
-        try:
-            markets = pyupbit.get_tickers(fiat="KRW")
-            # Extract symbol part after 'KRW-'
-            symbols = {market.split("-")[1] for market in markets if market.startswith("KRW-")}
-            logger.info(f"Loaded {len(symbols)} valid symbols from Upbit")
-            return symbols
-        except Exception as e:
-            logger.error(f"Failed to load Upbit symbols: {e}")
-            raise
     
     # USED
     def extract_symbols_from_news(self, news_list: List[Dict[str, Any]]) -> List[str]:
@@ -99,7 +75,6 @@ class AIAnalyzer:
                 temperature=SYMBOL_EXTRACTION_TEMPERATURE
             )
             
-            logger.debug(f"Raw AI response: {result}")
             symbols = self._parse_symbol_extraction_response(result)
             
             if not symbols:
@@ -153,12 +128,27 @@ class AIAnalyzer:
             logger.debug(f"Raw AI trading decision response: {result}")
             decisions = self._parse_trading_decisions_response(result)
             
-            logger.info(f"Generated {len(decisions)} trading decisions")
+            # Validate decisions against portfolio holdings
+            held_assets = set(portfolio.get('assets', {}).keys())
+            validated_decisions = {}
             
-            if not decisions:
+            for symbol, decision in decisions.items():
+                action = decision.get('action', '')
+                
+                # Check if AI incorrectly assigned "hold" to non-held asset
+                if action == 'hold' and symbol not in held_assets:
+                    logger.error(f"AI ERROR: Assigned 'hold' to {symbol} which is not in portfolio. This should be 'buy' or 'skip'!")
+                    # Don't change the action - let it fail so we can see the problem
+                    # This is a critical error that needs to be fixed in the AI prompt
+                
+                validated_decisions[symbol] = decision
+            
+            logger.info(f"Generated {len(validated_decisions)} trading decisions")
+            
+            if not validated_decisions:
                 logger.warning(f"No valid trading decisions extracted from AI response: {result}")
             
-            return decisions
+            return validated_decisions
             
         except Exception as e:
             logger.error(f"Failed to analyze market data: {e}")
@@ -394,8 +384,7 @@ class AIAnalyzer:
         except json.JSONDecodeError:
             # Extract symbols using regex
             matches = re.findall(r'\b[A-Z]{2,10}\b', result)
-            # Filter only valid Upbit symbols
-            return [m for m in matches if m in self.valid_symbols]
+            return matches
     
     def _parse_symbols_from_dict(self, result: Dict[str, Any]) -> List[str]:
         """Parse symbols from dictionary response.
@@ -468,13 +457,16 @@ class AIAnalyzer:
         """
         return """You are an expert cryptocurrency trader. Analyze market data and provide trading decisions.
         
+        CRITICAL RULE: Only assets listed in "Current Holdings" can have "hold", "sell_all", "partial_sell", or "buy_more" actions.
+        
         For each cryptocurrency, provide appropriate action based on holdings:
         
-        If CURRENTLY HOLDING the asset:
+        If asset IS IN "Current Holdings":
         - action: "hold", "sell_all", "partial_sell", or "buy_more"
         
-        If NOT HOLDING the asset:
-        - action: "buy" or "skip"
+        If asset IS NOT IN "Current Holdings":
+        - action: "buy" or "skip" ONLY
+        - NEVER use "hold" for assets not in portfolio
         
         For ALL decisions provide:
         - reason: Clear explanation for the decision
@@ -485,7 +477,7 @@ class AIAnalyzer:
           Example: 0.15 means sell 15% of current holdings
           Consider profit/loss, risk level, and market conditions
         
-        IMPORTANT: Check portfolio holdings first. You cannot "hold" an asset you don't own.
+        CRITICAL: You MUST check "Current Holdings" first. You CANNOT "hold" an asset you don't own.
         
         Consider:
         - Technical indicators and market trends

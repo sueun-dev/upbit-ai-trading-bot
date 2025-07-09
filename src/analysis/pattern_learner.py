@@ -78,7 +78,7 @@ class PatternLearner:
     - Pattern-based recommendations
     - Performance tracking
     """
-    
+    # USED
     def __init__(self, api_key: str) -> None:
         """Initialize the pattern learner.
         
@@ -95,8 +95,8 @@ class PatternLearner:
             self._create_outcomes_table(conn)
         
         self.pattern_cache = {}
-        logger.info("Pattern Learner initialized")
     
+    # USED
     def _create_patterns_table(self, conn: sqlite3.Connection) -> None:
         """Create learned patterns table."""
         conn.execute('''
@@ -111,6 +111,7 @@ class PatternLearner:
             )
         ''')
     
+    # USED
     def _create_lessons_table(self, conn: sqlite3.Connection) -> None:
         """Create trading lessons table."""
         conn.execute('''
@@ -125,6 +126,7 @@ class PatternLearner:
             )
         ''')
     
+    # USED
     def _create_outcomes_table(self, conn: sqlite3.Connection) -> None:
         """Create pattern outcomes table."""
         conn.execute('''
@@ -139,6 +141,7 @@ class PatternLearner:
             )
         ''')
     
+    # USED
     def analyze_trade_patterns(
         self,
         symbol: str,
@@ -172,80 +175,6 @@ class PatternLearner:
                 
         except Exception as e:
             logger.error(f"Failed to analyze trade pattern: {e}")
-    
-    def get_pattern_recommendations(
-        self,
-        symbol: str,
-        market_conditions: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Get pattern-based recommendations for current conditions.
-        
-        Args:
-            symbol: Trading symbol.
-            market_conditions: Current market conditions.
-            
-        Returns:
-            Pattern-based recommendations.
-        """
-        try:
-            # Find matching patterns
-            matching_patterns = self._find_matching_patterns(
-                symbol, market_conditions
-            )
-            
-            if not matching_patterns:
-                return self._get_empty_recommendations()
-            
-            # Aggregate recommendations
-            recommendations = self._aggregate_pattern_recommendations(
-                matching_patterns
-            )
-            
-            return {
-                'has_recommendations': True,
-                'confidence': recommendations['confidence'],
-                'recommendations': recommendations['actions'],
-                'supporting_patterns': len(matching_patterns)
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get pattern recommendations: {e}")
-            return self._get_empty_recommendations()
-    
-    def analyze_failure_patterns(
-        self,
-        days_back: int = DEFAULT_DAYS_BACK
-    ) -> Dict[str, Any]:
-        """Analyze recent failure patterns to identify issues.
-        
-        Args:
-            days_back: Number of days to analyze.
-            
-        Returns:
-            Failure pattern analysis.
-        """
-        try:
-            failure_patterns = self._get_recent_failure_patterns(days_back)
-            
-            # Analyze common failure factors
-            failure_analysis = self._analyze_failure_factors(failure_patterns)
-            
-            # Generate recommendations
-            recommendations = self._generate_failure_recommendations(
-                failure_analysis
-            )
-            
-            return {
-                'failure_rate': failure_analysis.get('overall_failure_rate', 0),
-                'common_factors': failure_analysis.get('common_factors', []),
-                'high_risk_conditions': failure_analysis.get('high_risk_conditions', []),
-                'recommendations': recommendations,
-                'pattern_count': len(failure_patterns)
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to analyze failure patterns: {e}")
-            return self._get_empty_failure_analysis()
     
     # USED
     def get_trading_lessons_for_prompt(self) -> List[str]:
@@ -733,215 +662,6 @@ Focus on {focus}.
         
         logger.info(f"Generated new trading lesson: {lesson_content}")
     
-    def _find_matching_patterns(
-        self,
-        symbol: str,
-        market_conditions: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """Find patterns matching current conditions.
-        
-        Args:
-            symbol: Trading symbol.
-            market_conditions: Current market conditions.
-            
-        Returns:
-            List of matching patterns.
-        """
-        try:
-            # Extract current features
-            current_features = self._extract_pattern_features(
-                symbol, 'unknown', market_conditions
-            )
-            
-            # Find similar patterns
-            with sqlite3.connect(self.db_path) as conn:
-                all_patterns = self._fetch_eligible_patterns(conn)
-                return self._filter_matching_patterns(all_patterns, current_features)
-                
-        except Exception as e:
-            logger.error(f"Failed to find matching patterns: {e}")
-            return []
-    
-    def _fetch_eligible_patterns(self, conn: sqlite3.Connection) -> List[Dict[str, Any]]:
-        """Fetch patterns eligible for matching.
-        
-        Args:
-            conn: Database connection.
-            
-        Returns:
-            List of eligible patterns.
-        """
-        cursor = conn.execute('''
-            SELECT pattern_type, pattern_data, success_rate, occurrence_count
-            FROM learned_patterns
-            WHERE occurrence_count >= ?
-            ORDER BY occurrence_count DESC
-        ''', (MIN_OCCURRENCES_FOR_MATCHING,))
-        
-        patterns = []
-        for row in cursor:
-            patterns.append({
-                'type': row[0],
-                'data': json.loads(row[1]),
-                'success_rate': row[2],
-                'occurrences': row[3]
-            })
-        return patterns
-    
-    def _filter_matching_patterns(
-        self,
-        patterns: List[Dict[str, Any]],
-        current_features: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """Filter patterns that match current features.
-        
-        Args:
-            patterns: List of patterns.
-            current_features: Current market features.
-            
-        Returns:
-            List of matching patterns.
-        """
-        matching = []
-        for pattern in patterns:
-            if self._patterns_match(current_features, pattern['data']):
-                matching.append(pattern)
-        return matching
-    
-    def _patterns_match(
-        self,
-        current: Dict[str, Any],
-        pattern: Dict[str, Any]
-    ) -> bool:
-        """Check if patterns match based on key features.
-        
-        Args:
-            current: Current features.
-            pattern: Pattern features.
-            
-        Returns:
-            True if patterns match.
-        """
-        return (
-            current.get('price_trend') == pattern.get('price_trend') and
-            current.get('rsi_level') == pattern.get('rsi_level') and
-            current.get('volatility') == pattern.get('volatility')
-        )
-    
-    def _aggregate_pattern_recommendations(
-        self,
-        patterns: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Aggregate recommendations from multiple patterns.
-        
-        Args:
-            patterns: List of matching patterns.
-            
-        Returns:
-            Aggregated recommendations.
-        """
-        action_scores = self._calculate_action_scores(patterns)
-        
-        if not action_scores:
-            return {'confidence': DEFAULT_CONFIDENCE, 'actions': []}
-        
-        sorted_actions = self._sort_actions_by_score(action_scores)
-        confidence = self._calculate_recommendation_confidence(
-            sorted_actions, sum(action_scores.values())
-        )
-        
-        return {
-            'confidence': confidence,
-            'actions': [action for action, _ in sorted_actions[:MAX_ACTION_RECOMMENDATIONS]]
-        }
-    
-    def _calculate_action_scores(
-        self,
-        patterns: List[Dict[str, Any]]
-    ) -> Dict[str, float]:
-        """Calculate scores for each action based on patterns.
-        
-        Args:
-            patterns: List of patterns.
-            
-        Returns:
-            Dictionary of action scores.
-        """
-        action_scores = defaultdict(float)
-        
-        for pattern in patterns:
-            weight = self._calculate_pattern_weight(pattern)
-            action = pattern['data'].get('action', 'hold')
-            
-            if pattern['success_rate'] > SUCCESS_ACTION_THRESHOLD:
-                action_scores[action] += weight
-            elif pattern['success_rate'] < FAILURE_ACTION_THRESHOLD:
-                # Recommend opposite action for failed patterns
-                opposite_action = self._get_opposite_action(action)
-                action_scores[opposite_action] += weight
-        
-        return dict(action_scores)
-    
-    def _calculate_pattern_weight(self, pattern: Dict[str, Any]) -> float:
-        """Calculate weight for pattern based on occurrences and success rate.
-        
-        Args:
-            pattern: Pattern data.
-            
-        Returns:
-            Pattern weight.
-        """
-        return pattern['occurrences'] * abs(pattern['success_rate'] - NEUTRAL_SUCCESS_RATE)
-    
-    def _get_opposite_action(self, action: str) -> str:
-        """Get opposite trading action.
-        
-        Args:
-            action: Original action.
-            
-        Returns:
-            Opposite action.
-        """
-        opposites = {
-            'buy': 'hold',
-            'sell': 'hold',
-            'hold': 'hold'
-        }
-        return opposites.get(action, 'hold')
-    
-    def _sort_actions_by_score(
-        self,
-        action_scores: Dict[str, float]
-    ) -> List[tuple]:
-        """Sort actions by score in descending order.
-        
-        Args:
-            action_scores: Dictionary of action scores.
-            
-        Returns:
-            Sorted list of (action, score) tuples.
-        """
-        return sorted(action_scores.items(), key=lambda x: x[1], reverse=True)
-    
-    def _calculate_recommendation_confidence(
-        self,
-        sorted_actions: List[tuple],
-        total_weight: float
-    ) -> float:
-        """Calculate confidence for recommendations.
-        
-        Args:
-            sorted_actions: Sorted action list.
-            total_weight: Total weight of all actions.
-            
-        Returns:
-            Confidence score between 0 and 1.
-        """
-        if not sorted_actions or total_weight == 0:
-            return DEFAULT_CONFIDENCE
-        
-        top_score = sorted_actions[0][1]
-        return min(top_score / total_weight, 1.0)
     
     def _get_recent_failure_patterns(self, days_back: int) -> List[Dict[str, Any]]:
         """Get recent failure patterns from database.
@@ -1167,17 +887,6 @@ Focus on {focus}.
         
         return recommendations
     
-    def _get_empty_recommendations(self) -> Dict[str, Any]:
-        """Get empty recommendations structure.
-        
-        Returns:
-            Empty recommendations dictionary.
-        """
-        return {
-            'has_recommendations': False,
-            'confidence': DEFAULT_CONFIDENCE,
-            'recommendations': []
-        }
     
     def _get_empty_failure_analysis(self) -> Dict[str, Any]:
         """Get empty failure analysis structure.
@@ -1235,5 +944,8 @@ Focus on {focus}.
                 successful_lessons.append(content)
         
         return successful_lessons
+
+
+# Note: pattern_learner instance will be created by TradingOrchestrator with API key
 
 

@@ -99,7 +99,7 @@ class RiskMonitor:
     - Correlation risks
     - Stop-loss triggers
     """
-    
+    # USED
     def __init__(self, api_key: str) -> None:
         """Initialize the risk monitor.
         
@@ -114,7 +114,6 @@ class RiskMonitor:
             'drawdown_critical': DRAWDOWN_CRITICAL_THRESHOLD,
             'correlation_high': CORRELATION_HIGH_THRESHOLD
         }
-        logger.info("Risk Monitor initialized")
     
     # USED
     def monitor_active_positions(
@@ -706,8 +705,9 @@ class RiskMonitor:
         size_risk = min(position_ratio / self.risk_thresholds['position_size'], 1)
         # Loss risk
         if profit_loss_pct < 0:
-            loss_risk =  min(abs(profit_loss_pct) / MAX_LOSS_FOR_RISK_CALC, 1)
-        else: 0
+            loss_risk = min(abs(profit_loss_pct) / MAX_LOSS_FOR_RISK_CALC, 1)
+        else:
+            loss_risk = 0
         # Volatility risk
         vol_risk = min(volatility / MAX_VOLATILITY_FOR_RISK_CALC, 1)
         

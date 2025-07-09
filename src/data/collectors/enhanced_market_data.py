@@ -4,8 +4,8 @@ import logging
 import pandas as pd
 import numpy as np
 import pyupbit
-from datetime import datetime, timedelta, UTC
-from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, UTC
+from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,6 @@ class EnhancedMarketData:
     vwap_24h: float
     vwap_7d: float
     
-    
     # Technical Indicators
     rsi_14: float
     rsi_30: float
@@ -66,7 +65,7 @@ class EnhancedMarketData:
     ema_21: float
     ema_50: float
     ema_200: float
-    ema_cross_signal: str  # bullish/bearish/neutral
+    ema_cross_signal: str
     ichimoku_tenkan: float
     ichimoku_kijun: float
     ichimoku_senkou_a: float
@@ -104,8 +103,7 @@ class EnhancedMarketDataCollector:
     """Collects comprehensive quantitative market data for AI analysis."""
     
     def __init__(self):
-        self.coinmarketcap_api_key = None  # Add if available
-        self.coingecko_base_url = "https://api.coingecko.com/api/v3"
+        pass  # All data comes from Upbit API
         
     # USED
     def get_enhanced_market_data(self, symbol: str) -> Optional[EnhancedMarketData]:
@@ -132,7 +130,6 @@ class EnhancedMarketDataCollector:
             
             # Get technical indicators
             technical_data = self._get_technical_indicators(market_code)
-            
             
             # Get support/resistance levels
             support_resistance = self._get_support_resistance_levels(market_code)
@@ -549,9 +546,18 @@ class EnhancedMarketDataCollector:
             
             returns = df['close'].pct_change().dropna()
             
-            volatility_1d = float(returns.iloc[-1:].std() * 100) if len(returns) >= 1 else 0.0
+            # For 1d volatility, use absolute return instead of std on single value
+            volatility_1d = float(abs(returns.iloc[-1]) * 100) if len(returns) >= 1 else 0.0
             volatility_7d = float(returns.iloc[-7:].std() * 100) if len(returns) >= 7 else 0.0
             volatility_30d = float(returns.std() * 100) if len(returns) >= 30 else 0.0
+            
+            # Handle NaN values
+            if pd.isna(volatility_1d):
+                volatility_1d = 0.0
+            if pd.isna(volatility_7d):
+                volatility_7d = 0.0
+            if pd.isna(volatility_30d):
+                volatility_30d = 0.0
             
             return {
                 'volatility_1d': round(volatility_1d, 2),

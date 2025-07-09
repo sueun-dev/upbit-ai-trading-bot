@@ -11,49 +11,10 @@ from src.infrastructure.config.settings import (
 )
 from src.shared.utils.helpers import setup_logging
 
-# Constants
 MAX_CONSECUTIVE_ERRORS = 5
 AI_LEARNING_DAYS_BACK = 30
 
-# Module-level logger
 logger = logging.getLogger(__name__)
-
-def initialize_trade_history_analyzer() -> AILearningSystem:
-    """Initialize trade history analyzer with past data.
-    
-    Returns:
-        AILearningSystem instance. On first run (empty database):
-        - lessons_learned: []
-        - pattern_statistics: {}
-        
-        With trade history:
-        - lessons_learned: List with 2 insights (success_rate, failure_analysis)
-        - pattern_statistics: Dict with per-symbol success rates
-    """
-    try:
-        analyzer = AILearningSystem()
-        insights = analyzer.analyze_historical_trades(days_back=AI_LEARNING_DAYS_BACK)
-        
-        # Log initial insights
-        logger.info(f"📊 Trade history analyzer initialized with {len(insights)} insights")
-        
-        for insight in insights:
-            if insight['type'] == 'success_rate':
-                metrics = insight['metrics']
-                logger.info(f"📈 Overall: {metrics['success_rate']}% success ({metrics['successful_trades']}/{metrics['total_trades']} trades)")
-                if metrics['total_trades'] > 0:
-                    logger.info(f"💰 Avg profit: {metrics.get('avg_profit', 0)}%, Avg loss: {metrics.get('avg_loss', 0)}%")
-            
-            elif insight['type'] == 'failure_analysis':
-                metrics = insight['metrics']
-                if metrics['total_failures'] > 0:
-                    logger.info(f"⚠️ Failure rate: {metrics['failure_rate']}% - Most common: {insight['most_common_reason']}")
-        
-        return analyzer
-        
-    except Exception as e:
-        logger.critical(f"❌ Trade history analyzer initialization FAILED: {e}")
-        raise
 
 def run_main_trading_loop(orchestrator: TradingOrchestrator) -> None:
     """Execute the main trading loop with error handling.
@@ -64,7 +25,6 @@ def run_main_trading_loop(orchestrator: TradingOrchestrator) -> None:
     consecutive_errors = 0
     
     logger.info(f"⏰ Main trading cycle runs every {CHECK_INTERVAL_SECONDS} seconds")
-    logger.info("✅ All systems operational - starting main trading loop")
     
     while True:
         try:
@@ -73,45 +33,32 @@ def run_main_trading_loop(orchestrator: TradingOrchestrator) -> None:
             
             logger.info("😴 Waiting %ds before next trading cycle...", CHECK_INTERVAL_SECONDS)
             
-            # Simple sleep
             time.sleep(CHECK_INTERVAL_SECONDS)
                 
-        except KeyboardInterrupt:
-            logger.info("🛑 Trading loop stopped by user")
-            break
-            
         except Exception as exc:
             consecutive_errors += 1
-            logger.error(
-                "Unexpected error in main trading loop (%d/%d): %s",
-                consecutive_errors,
-                MAX_CONSECUTIVE_ERRORS,
-                exc,
-                exc_info=True
-            )
+            logger.error(f"Error {consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}: {exc}")
             
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-                logger.critical(
-                    "❌ Too many consecutive errors (%d). Stopping trading loop.",
-                    consecutive_errors
-                )
+                logger.critical("❌ Too many errors. Stopping.")
                 break
             
-            # Exponential backoff
-            wait_time = min(CHECK_INTERVAL_SECONDS * (2 ** (consecutive_errors - 1)), 3600)
-            logger.info("Waiting %ds before retry...", wait_time)
-            
-            # Simple sleep
-            time.sleep(wait_time)
+            time.sleep(min(CHECK_INTERVAL_SECONDS * consecutive_errors, 3600))
 
 if __name__ == "__main__":
     try:
         setup_logging()
         
-        logger.info(f"[START] Trading interval: {CHECK_INTERVAL_SECONDS} seconds")
+        trade_analyzer = AILearningSystem()
+        insights = trade_analyzer.analyze_historical_trades(days_back=AI_LEARNING_DAYS_BACK)
+        logger.info(f"📊 Trade analyzer: {len(insights)} insights")
         
-        # Initialize trade history analyzer
-        trade_analyzer = initialize_trade_history_analyzer()
+        for insight in insights:
+            if insight['type'] == 'success_rate' and insight.get('metrics', {}).get('total_trades', 0) > 0:
+                m = insight['metrics']
+                logger.info(f"📈 {m['success_rate']}% success ({m['successful_trades']}/{m['total_trades']})")
+            elif insight['type'] == 'failure_analysis' and insight.get('metrics', {}).get('total_failures', 0) > 0:
+                logger.info(f"⚠️ Failure: {insight.get('most_common_reason', 'Unknown')}")
         
         orchestrator = TradingOrchestrator(
             access_key=UPBIT_ACCESS_KEY,
@@ -120,11 +67,8 @@ if __name__ == "__main__":
             trade_analyzer=trade_analyzer
         )
         
-        logger.info("🚀 Starting Advanced AI Auto Trading System")
-        
-        # Run main trading loop
         run_main_trading_loop(orchestrator)
         
     except Exception as e:
-            logger.critical(f"❌ Fatal error: {e}", exc_info=True)
-            raise SystemExit(1)
+        logger.critical(f"❌ Fatal error: {e}", exc_info=True)
+        raise SystemExit(1)

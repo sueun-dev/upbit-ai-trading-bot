@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List
 
-from src.analysis.pattern_learner import pattern_learner
+from src.analysis.pattern_learner import PatternLearner
 from src.shared.openai_client import OpenAIClient
 
 # Severity thresholds for loss assessment
@@ -119,13 +119,13 @@ class PostTradeAnalyzer:
             api_key: OpenAI API key
         """
         self.openai_client = OpenAIClient(api_key=api_key)
+        self.pattern_learner = PatternLearner(api_key=api_key)
         self.severity_thresholds = {
             SEVERITY_MINOR: SEVERITY_MINOR_THRESHOLD,
             SEVERITY_MODERATE: SEVERITY_MODERATE_THRESHOLD,
             SEVERITY_SEVERE: SEVERITY_SEVERE_THRESHOLD,
             SEVERITY_CRITICAL: SEVERITY_CRITICAL_THRESHOLD
         }
-        logger.info("Post-Trade Analyzer initialized")
     
     def analyze_stop_loss_decision(
         self,
@@ -184,57 +184,6 @@ class PostTradeAnalyzer:
         except Exception as e:
             logger.error(f"Failed to analyze stop-loss decision: {e}")
             return self._build_error_result(str(e))
-    
-    def analyze_completed_trade(
-        self,
-        symbol: str,
-        entry_data: Dict[str, Any],
-        exit_data: Dict[str, Any],
-        market_conditions: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Analyze a completed trade (both entry and exit).
-        
-        Args:
-            symbol: Trading symbol.
-            entry_data: Entry trade information.
-            exit_data: Exit trade information.
-            market_conditions: Market conditions during trade.
-            
-        Returns:
-            Comprehensive trade analysis.
-        """
-        try:
-            # Calculate performance metrics
-            performance = self._calculate_performance_metrics(
-                entry_data, exit_data
-            )
-            
-            # Analyze trade execution quality
-            execution_analysis = self._analyze_execution_quality(
-                entry_data, exit_data, market_conditions
-            )
-            
-            # Identify what worked or didn't
-            success_factors = self._identify_success_factors(
-                performance, execution_analysis, market_conditions
-            )
-            
-            # Generate improvement suggestions
-            improvements = self._generate_improvement_suggestions(
-                performance, execution_analysis
-            )
-            
-            return self._build_trade_analysis_result(
-                symbol, performance, execution_analysis,
-                success_factors, improvements
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to analyze completed trade: {e}")
-            return {
-                'error': str(e),
-                'overall_rating': RATING_UNKNOWN
-            }
     
     def _calculate_trade_metrics(
         self,
@@ -643,7 +592,7 @@ decision_quality, warning_signs, avoidable, key_lesson"""
             market_conditions = self._prepare_market_conditions(market_analysis)
             outcome = self._prepare_outcome_data(symbol, trade_metrics)
             
-            pattern_learner.analyze_trade_patterns(
+            self.pattern_learner.analyze_trade_patterns(
                 symbol, action, market_conditions, outcome
             )
             
@@ -1163,39 +1112,7 @@ decision_quality, warning_signs, avoidable, key_lesson"""
                 severity, lessons
             )
         }
-    
-    def _build_trade_analysis_result(
-        self,
-        symbol: str,
-        performance: Dict[str, Any],
-        execution_analysis: Dict[str, Any],
-        success_factors: List[str],
-        improvements: List[str]
-    ) -> Dict[str, Any]:
-        """Build trade analysis result dictionary.
-        
-        Args:
-            symbol: Trading symbol.
-            performance: Performance metrics.
-            execution_analysis: Execution analysis.
-            success_factors: Success factors.
-            improvements: Improvement suggestions.
-            
-        Returns:
-            Complete analysis result.
-        """
-        return {
-            'timestamp': datetime.now().isoformat(),
-            'symbol': symbol,
-            'performance': performance,
-            'execution_analysis': execution_analysis,
-            'success_factors': success_factors,
-            'improvement_suggestions': improvements,
-            'overall_rating': self._calculate_trade_rating(
-                performance, execution_analysis
-            )
-        }
-    
+ 
     def _build_error_result(self, error: str) -> Dict[str, Any]:
         """Build error result dictionary.
         

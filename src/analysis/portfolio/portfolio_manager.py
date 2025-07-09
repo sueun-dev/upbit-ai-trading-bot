@@ -1,6 +1,7 @@
 """Portfolio manager with comprehensive error handling and AI analysis."""
 
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional
 
 import pyupbit
@@ -32,8 +33,12 @@ def _fetch_balances(upbit) -> Dict[str, Any]:
         else:
             # Get price info
             avg_buy_price = float(item.get('avg_buy_price', 0))
-            market_price = pyupbit.get_current_price(f'KRW-{currency}')
-            current_price = float(market_price) if market_price else 0.0
+            try:
+                market_price = pyupbit.get_current_price(f'KRW-{currency}')
+                current_price = float(market_price) if market_price else 0.0
+            except Exception as e:
+                logger.warning(f"Failed to get current price for {currency}: {e}, using avg_buy_price")
+                current_price = avg_buy_price  # Use average buy price as fallback
             
             # Calculate value
             current_value_krw = balance * (current_price if current_price > 0 else avg_buy_price)
@@ -80,7 +85,7 @@ def _calculate_portfolio_metrics(krw_balance: float, crypto_assets: Dict[str, An
         }
     }
 
-
+# USED
 def _analyze_portfolio_with_ai(krw_balance: float, total_balance: float, crypto_assets: Dict[str, Any], api_key: str) -> Dict[str, Any]:
     """Analyze portfolio using AI.
     
@@ -114,7 +119,6 @@ def _analyze_portfolio_with_ai(krw_balance: float, total_balance: float, crypto_
         'value_krw': asset['value_krw']
     } for symbol, asset in crypto_assets.items()]
     
-    # Create AI prompt
     ai_prompt = f"""Analyze this cryptocurrency portfolio:
 
         Portfolio Overview:
@@ -153,12 +157,10 @@ def _analyze_portfolio_with_ai(krw_balance: float, total_balance: float, crypto_
 def get_portfolio_status(upbit, api_key: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Get portfolio status with comprehensive error handling and AI analysis."""
     try:
-        # Fetch balances
         balance_data = _fetch_balances(upbit)
         krw_balance = balance_data['krw_balance']
         crypto_assets = balance_data['crypto_assets']
         
-        # Calculate metrics
         metrics_data = _calculate_portfolio_metrics(krw_balance, crypto_assets)
         total_balance = metrics_data['total_balance']
         metrics = metrics_data['metrics']
@@ -167,12 +169,12 @@ def get_portfolio_status(upbit, api_key: Optional[str] = None) -> Optional[Dict[
         
         return {
             'total_balance': total_balance,
-            'total_assets': total_balance,  # Add for compatibility
+            'total_assets': total_balance,
             'krw_balance': krw_balance,
-            'available_krw': krw_balance,  # Add for compatibility
+            'available_krw': krw_balance,
             'assets': crypto_assets,
             'ai_portfolio_analysis': ai_analysis,
-            'last_updated': '2025-07-03T02:00:00Z',
+            'last_updated': datetime.now().isoformat() + 'Z',
             'metrics': metrics
         }
         

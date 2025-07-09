@@ -181,3 +181,5 @@ src/infrastructure/config/settings_local.py
 
 # uv specific
 .uv/ 
+
+trading_data.db

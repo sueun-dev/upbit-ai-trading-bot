@@ -23,12 +23,6 @@ AGGRESSIVE_TEMPERATURE = 0.5
 TECHNICAL_TEMPERATURE = 0.1
 SENTIMENT_TEMPERATURE = 0.3
 
-# Validator names
-VALIDATOR_CONSERVATIVE = 'conservative'
-VALIDATOR_AGGRESSIVE = 'aggressive'
-VALIDATOR_TECHNICAL = 'technical'
-VALIDATOR_SENTIMENT = 'sentiment'
-
 # Action types
 BUY_ACTIONS = ['buy', 'buy_more']
 SELL_ACTIONS = ['sell_all', 'partial_sell']
@@ -53,6 +47,7 @@ class MultiAIValidator:
     - Final Arbitrator
     """
     
+    # USED
     def __init__(self, api_key: str) -> None:
         """Initialize the multi-AI validator.
         
@@ -61,12 +56,11 @@ class MultiAIValidator:
         """
         self.openai_client = OpenAIClient(api_key=api_key)
         self.validators = {
-            VALIDATOR_CONSERVATIVE: self._validate_conservative,
-            VALIDATOR_AGGRESSIVE: self._validate_aggressive,
-            VALIDATOR_TECHNICAL: self._validate_technical,
-            VALIDATOR_SENTIMENT: self._validate_sentiment
+            'conservative': self._validate_conservative,
+            'aggressive': self._validate_aggressive,
+            'technical': self._validate_technical,
+            'sentiment': self._validate_sentiment
         }
-        logger.info(f"Multi-AI Validator initialized with {len(self.validators)} validation perspectives")
     
     # USED
     def cross_validate_multiple_decisions(
@@ -97,7 +91,7 @@ class MultiAIValidator:
                 )
                 
                 # Aggregate validations
-                final_decision = self._aggregate_validations(decision, validations)
+                final_decision = self._aggregate_validations(decision, validations, symbol, portfolio)
                 
                 # Add validation metadata
                 final_decision['validation_results'] = validations
@@ -154,12 +148,14 @@ class MultiAIValidator:
             'reason': 'Validation error'
         }
     
+    # USED
     def _validate_conservative(
         self,
         symbol: str,
         decision: Dict[str, Any],
         market_data: Dict[str, Any],
         portfolio: Dict[str, Any],
+        news_list: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Conservative risk assessor perspective."""
         system_message = """You are a conservative risk manager for a cryptocurrency trading system.
@@ -167,7 +163,19 @@ class MultiAIValidator:
         and prefer steady, low-risk opportunities. Review the proposed trading decision and assess
         whether it aligns with conservative risk management principles."""
         
-        prompt = self._create_conservative_prompt(symbol, decision, market_data, portfolio)
+        prompt = f"""Review this trading decision for {symbol}:
+        
+            Decision: {decision.get('action')}
+            Reason: {decision.get('reason')}
+            Confidence: {decision.get('confidence', DEFAULT_CONFIDENCE)}
+            
+            Current Price: {market_data.get('current_price', 0):,.0f} KRW
+            24h Change: {market_data.get('price_24h_change', 0):.2f}%
+            RSI: {market_data.get('rsi', {}).get('rsi_14', 50)}
+            Portfolio Value: {portfolio.get('total_balance', 0):,.0f} KRW
+            
+            Should this trade be approved from a conservative perspective?
+            Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
         
         return self.openai_client.analyze_with_prompt(
             prompt=prompt,
@@ -242,7 +250,9 @@ class MultiAIValidator:
     def _aggregate_validations(
         self,
         original_decision: Dict[str, Any],
-        validations: Dict[str, Dict[str, Any]]
+        validations: Dict[str, Dict[str, Any]],
+        symbol: str,
+        portfolio: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Aggregate multiple validation results into final decision.
         
@@ -262,7 +272,7 @@ class MultiAIValidator:
         final_decision = original_decision.copy()
         
         # Apply validation rules
-        self._apply_validation_rules(final_decision, original_decision, approval_rate)
+        self._apply_validation_rules(final_decision, original_decision, approval_rate, symbol, portfolio)
         
         # Adjust confidence based on consensus
         final_decision['confidence'] = avg_confidence * consensus_factor
@@ -313,7 +323,9 @@ class MultiAIValidator:
         self,
         final_decision: Dict[str, Any],
         original_decision: Dict[str, Any],
-        approval_rate: float
+        approval_rate: float,
+        symbol: str,
+        portfolio: Dict[str, Any]
     ) -> None:
         """Apply validation rules to modify decision.
         
@@ -321,11 +333,18 @@ class MultiAIValidator:
             final_decision: Decision to modify (modified in place).
             original_decision: Original decision for reference.
             approval_rate: Calculated approval rate.
+            symbol: The symbol being validated.
+            portfolio: Current portfolio status.
         """
         if approval_rate < MAJORITY_REJECTION_THRESHOLD:
+            # Check if asset is held
+            held_assets = set(portfolio.get('assets', {}).keys())
+            is_held = symbol in held_assets
+            
             if original_decision['action'] in BUY_ACTIONS:
-                final_decision['action'] = HOLD_ACTION
-                final_decision['reason'] = f"Multi-AI validation rejected: {approval_rate:.0%} approval"
+                # If rejected buy action, change to skip (not hold)
+                final_decision['action'] = 'skip'
+                final_decision['reason'] = f"Multi-AI validation rejected buy: {approval_rate:.0%} approval"
             elif original_decision['action'] in SELL_ACTIONS:
                 # For sells, be more cautious about overriding
                 if approval_rate < STRONG_REJECTION_THRESHOLD:
@@ -355,37 +374,6 @@ class MultiAIValidator:
         return all(approvals) or not any(approvals)  # All agree (either way)
     
     # Prompt creation helper methods
-    def _create_conservative_prompt(
-        self,
-        symbol: str,
-        decision: Dict[str, Any],
-        market_data: Dict[str, Any],
-        portfolio: Dict[str, Any]
-    ) -> str:
-        """Create prompt for conservative validator.
-        
-        Args:
-            symbol: Trading symbol.
-            decision: Trading decision.
-            market_data: Market data.
-            portfolio: Portfolio status.
-            
-        Returns:
-            Formatted prompt string.
-        """
-        return f"""Review this trading decision for {symbol}:
-        
-            Decision: {decision.get('action')}
-            Reason: {decision.get('reason')}
-            Confidence: {decision.get('confidence', DEFAULT_CONFIDENCE)}
-            
-            Current Price: {market_data.get('current_price', 0):,.0f} KRW
-            24h Change: {market_data.get('price_24h_change', 0):.2f}%
-            RSI: {market_data.get('rsi', {}).get('rsi_14', 50)}
-            Portfolio Value: {portfolio.get('total_balance', 0):,.0f} KRW
-            
-            Should this trade be approved from a conservative perspective?
-            Respond with JSON: {{"approved": true/false, "confidence": 0.0-1.0, "reason": "explanation"}}"""
     
     def _create_aggressive_prompt(
         self,

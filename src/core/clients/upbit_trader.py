@@ -76,17 +76,10 @@ class UpbitTrader:
             access_key: Upbit API access key.
             secret_key: Upbit API secret key.
         """
-        try:
-            self.upbit = pyupbit.Upbit(access=access_key, secret=secret_key)
-        except Exception as e:
-            logger.error(f"Failed to initialize Upbit client: {e}")
-            raise
-        
+        self.upbit = pyupbit.Upbit(access=access_key, secret=secret_key)
+
         markets = pyupbit.get_tickers(fiat="KRW")
         self.available_symbols = {m.split("-")[1] for m in markets}
-        
-        logger.info("Upbit trader initialized successfully")
-    
 
     def buy_market_order(self, symbol: str, krw_amount: float) -> bool:
         """Place a market buy order for a given KRW amount.

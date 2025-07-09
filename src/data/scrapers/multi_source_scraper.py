@@ -1,9 +1,4 @@
-"""Multi-source news scraper that aggregates from multiple news sources.
-
-This module provides functionality to aggregate cryptocurrency news from
-multiple RSS feeds using the enhanced RSS aggregator.
-"""
-
+"""Multi-source news scraper that aggregates from multiple news sources."""
 import logging
 from typing import List, Dict, Any
 
@@ -42,7 +37,6 @@ class MultiSourceNewsScraper:
             rss_articles = enhanced_rss_aggregator.fetch_all_news(
                 max_total_articles * RSS_MULTIPLIER
             )
-            logger.info("📰 RSS 수집: %d개 기사", len(rss_articles))
             
             if rss_articles and len(rss_articles) >= max_total_articles // RSS_SUFFICIENT_THRESHOLD_DIVISOR:
                 logger.info("✅ RSS 수집 성공: %d개 기사", len(rss_articles))

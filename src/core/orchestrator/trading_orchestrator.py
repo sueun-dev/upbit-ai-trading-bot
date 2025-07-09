@@ -7,7 +7,7 @@ and trade execution with comprehensive safety systems.
 import logging
 import time
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from src.analysis.ai_analyzer import AIAnalyzer
 from src.analysis.enhanced_market_analyzer import enhanced_market_analyzer
@@ -16,7 +16,7 @@ from src.analysis.risk_monitor import RiskMonitor
 from src.analysis.adaptive_risk_manager import AdaptiveRiskManager
 from src.analysis.pattern_learner import PatternLearner
 from src.analysis.post_trade_analyzer import PostTradeAnalyzer
-from src.analysis.ai_learning.ai_learning_system import trade_history_analyzer, AILearningSystem
+from src.analysis.ai_learning.ai_learning_system import AILearningSystem
 from src.data.collectors.enhanced_market_data import enhanced_collector
 from src.data.scrapers.multi_source_scraper import multi_source_scraper
 from src.core.clients.upbit_trader import UpbitTrader
@@ -125,7 +125,7 @@ class TradingOrchestrator:
         access_key: str,
         secret_key: str,
         openai_api_key: str,
-        trade_analyzer: AILearningSystem = None
+        trade_analyzer: AILearningSystem
     ) -> None:
         """Initialize orchestrator with trader and AI analyzer.
         
@@ -138,16 +138,15 @@ class TradingOrchestrator:
         self.circuit_breaker = CircuitBreaker()
         self.trader = UpbitTrader(access_key=access_key, secret_key=secret_key)
         self.ai_analyzer = AIAnalyzer(api_key=openai_api_key)
-        self.openai_api_key = openai_api_key
         self.data_store = DataStore()
-        self.trade_analyzer = trade_analyzer if trade_analyzer else trade_history_analyzer
+        self.trade_analyzer = trade_analyzer
         
         # AI Safety Systems - Initialize with API key
-        self.multi_ai_validator = MultiAIValidator(openai_api_key)
-        self.risk_monitor = RiskMonitor(openai_api_key)
+        self.multi_ai_validator = MultiAIValidator(api_key=openai_api_key)
+        self.risk_monitor = RiskMonitor(api_key=openai_api_key)
         self.adaptive_risk_manager = AdaptiveRiskManager()
-        self.pattern_learner = PatternLearner(openai_api_key)
-        self.post_trade_analyzer = PostTradeAnalyzer(openai_api_key)
+        self.pattern_learner = PatternLearner(api_key=openai_api_key)
+        self.post_trade_analyzer = PostTradeAnalyzer(api_key=openai_api_key)
         
         self._cycle_count = 0
         self._last_cycle_time = None
@@ -537,11 +536,10 @@ class TradingOrchestrator:
             Tuple of (news_list, symbols, market_data, portfolio).
         """
         # 1. Always get portfolio first - required for all operations
-        portfolio = self.trader.get_portfolio_status(api_key=self.openai_api_key)
+        portfolio = self.trader.get_portfolio_status()
         
         # Validate portfolio
         if not portfolio or portfolio.get("total_balance", 0) <= MIN_PORTFOLIO_BALANCE:
-            logger.error(LOG_INVALID_PORTFOLIO)
             raise ValueError("Invalid portfolio data")
         
         # 2. Collect news
@@ -1218,7 +1216,7 @@ Return ONLY a decimal number between 0.02 and 0.15 (e.g., 0.05 for 5% stop-loss)
             detailed: If True, show detailed report. If False, show summary only.
         """
         try:
-            portfolio = self.trader.get_portfolio_status(api_key=self.openai_api_key)
+            portfolio = self.trader.get_portfolio_status()
             
             if not portfolio or not portfolio.get('assets'):
                 logger.info("📊 Portfolio is empty or unavailable")
