@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 import numpy as np
 import pyupbit
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 
@@ -145,7 +145,7 @@ class EnhancedMarketDataCollector:
                 # Basic Info
                 symbol=symbol,
                 current_price=current_price,
-                timestamp=datetime.now(UTC).isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 
                 # Price Analysis
                 **price_data,
