@@ -1,4 +1,6 @@
-# AI Upbit Trading System
+# Upbit AI Trading Bot
+
+AI-assisted Upbit trading stack for signal generation, orchestration, and operator dashboards.
 
 AI 기반 업비트 암호화폐 자동 거래 시스템
 
