@@ -6,4 +6,4 @@ the end-to-end trading process.
 
 from .trading_orchestrator import TradingOrchestrator
 
-__all__ = ["TradingOrchestrator"] 
+__all__ = ["TradingOrchestrator"]

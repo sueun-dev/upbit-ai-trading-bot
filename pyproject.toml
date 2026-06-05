@@ -1,58 +1,56 @@
 [tool.poetry]
 name = "upbit-ai-trading-bot"
-version = "0.1.0"
+version = "0.2.0"
 description = "An AI-assisted automated trading system for the Upbit exchange"
 authors = ["sueun-dev <sueun.dev@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [{ include = "src" }]
 
+# NOTE: dependency constraints were widened to match the tested runtime
+# (Python 3.11+, openai 2.x, pandas 2.2/3.x). Run `poetry lock` to refresh
+# poetry.lock after editing this file. The flask/dash/plotly dashboard stack
+# and beautifulsoup4 were removed: nothing in src/ imported them.
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.11"
 pyupbit = "^0.2.33"
-openai = "^1.50.0"
-requests = "^2.31.0"
-beautifulsoup4 = "^4.12.2"
-python-dotenv = "^1.0.0"
-lxml = "^5.0.0"
-pandas = "^2.2.0"
-flask = "^3.0.0"
-flask-socketio = "^5.3.6"
-plotly = "^5.17.0"
-dash = "^2.17.0"
-dash-bootstrap-components = "^1.5.0"
+openai = "^2.0"
+requests = "^2.31"
+python-dotenv = "^1.0"
+lxml = ">=5.0"
+pandas = ">=2.2"
 feedparser = "^6.0.11"
-flask-cors = "^6.0.1"
-chardet = "^5.2.0"
+chardet = ">=5.2"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.3"
-pytest-cov = "^4.1.0"
-mock = "^5.1.0"
-black = "^23.0.0"
-isort = "^5.12.0"
-flake8 = "^6.0.0"
-mypy = "^1.0.0"
+pytest = ">=8.0"
+pytest-cov = ">=5.0"
+black = ">=24.0"
+isort = ">=5.13"
+flake8 = ">=7.0"
+mypy = ">=1.8"
+pandas-stubs = "*"
+types-requests = "*"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-upbit-trader = "main:run_trading_loop"
+upbit-trader = "main:main"
 
 [tool.black]
 line-length = 88
-target-version = ['py39']
+target-version = ['py311']
 
 [tool.isort]
 profile = "black"
 multi_line_output = 3
 line_length = 88
-known_first_party = ["analyzer", "config", "market", "orchestrator", "scraper", "trader", "utils"]
+known_first_party = ["src"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -69,7 +67,6 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = [
     "pyupbit.*",
-    "openai.*",
-    "bs4.*",
+    "feedparser.*",
 ]
 ignore_missing_imports = true

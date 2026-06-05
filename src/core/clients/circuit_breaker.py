@@ -9,37 +9,54 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _parse_timestamp(value: Optional[str]) -> datetime:
+    """Parse an ISO timestamp, returning datetime.min for any missing/malformed value."""
+    if not value:
+        return datetime.min
+    try:
+        return datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return datetime.min
+
+
 class CircuitBreaker:
     """Circuit breaker to prevent cascading losses."""
-    
-    # USED
-    def __init__(self):
+
+    def __init__(self) -> None:
         """Initialize circuit breaker with default settings."""
         self.max_consecutive_losses = 3
         self.max_daily_loss_percent = 10.0
         self.max_trades_per_hour = 10
         self.cooldown_hours = 2
-        self.data_file = os.path.join(os.path.dirname(__file__), "circuit_breaker_data.json")
-        
+        self.data_file = os.path.join(
+            os.path.dirname(__file__), "circuit_breaker_data.json"
+        )
+
         self.trade_history: List[Dict] = []
         self.circuit_open = False
         self.circuit_open_time: Optional[datetime] = None
         self.consecutive_losses = 0
-        
+
         self._load_data()
-    
-    # USED
+
     def _load_data(self) -> None:
         """Load circuit breaker data from file."""
         try:
-            with open(self.data_file, 'r') as f:
+            with open(self.data_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            self.trade_history = data.get('trade_history', [])
-            self.circuit_open = data.get('circuit_open', False)
-            self.circuit_open_time = datetime.fromisoformat(data['circuit_open_time']) if data.get('circuit_open_time') else None
-            self.consecutive_losses = data.get('consecutive_losses', 0)
-            logger.info(f"Loaded circuit breaker data: {len(self.trade_history)} trades, circuit_open={self.circuit_open}")
-        except (OSError, json.JSONDecodeError, KeyError, ValueError):
+            self.trade_history = data.get("trade_history", [])
+            self.circuit_open = data.get("circuit_open", False)
+            self.circuit_open_time = (
+                datetime.fromisoformat(data["circuit_open_time"])
+                if data.get("circuit_open_time")
+                else None
+            )
+            self.consecutive_losses = data.get("consecutive_losses", 0)
+            logger.info(
+                f"Loaded circuit breaker data: {len(self.trade_history)} trades, circuit_open={self.circuit_open}"
+            )
+        except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+            logger.debug("No usable circuit breaker data (%s); starting fresh", exc)
             self.trade_history = []
             self.circuit_open = False
             self.circuit_open_time = None
@@ -49,26 +66,25 @@ class CircuitBreaker:
         """Save circuit breaker data to file."""
         try:
             data = {
-                'trade_history': self.trade_history[-100:],  # Keep last 100
-                'circuit_open': self.circuit_open,
-                'circuit_open_time': (
+                "trade_history": self.trade_history[-100:],  # Keep last 100
+                "circuit_open": self.circuit_open,
+                "circuit_open_time": (
                     self.circuit_open_time.isoformat()
                     if self.circuit_open_time
                     else None
                 ),
-                'consecutive_losses': self.consecutive_losses
+                "consecutive_losses": self.consecutive_losses,
             }
-            
-            with open(self.data_file, 'w') as f:
+
+            with open(self.data_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-                
+
         except Exception as e:
             logger.error("Failed to save circuit breaker data: %s", e)
-    
-    # USED
+
     def can_trade(self) -> bool:
         """Check if trading is allowed.
-        
+
         Returns:
             bool: True if trading is allowed, False otherwise
         """
@@ -80,32 +96,34 @@ class CircuitBreaker:
                 self.reset_circuit()
             else:
                 remaining = (cooldown_end - datetime.now()).total_seconds() / 60
-                logger.warning("Circuit breaker is OPEN. Trading disabled for %.1f more minutes",
-                             remaining)
+                logger.warning(
+                    "Circuit breaker is OPEN. Trading disabled for %.1f more minutes",
+                    remaining,
+                )
                 return False
-        
+
         # Check hourly trade limit
         if self._check_hourly_trade_limit():
-            logger.warning("Hourly trade limit reached (%d trades)", self.max_trades_per_hour)
+            logger.warning(
+                "Hourly trade limit reached (%d trades)", self.max_trades_per_hour
+            )
             return False
-        
+
         # Check daily loss limit
         if self._check_daily_loss_limit():
-            logger.warning("Daily loss limit reached (%.1f%%)", self.max_daily_loss_percent)
+            logger.warning(
+                "Daily loss limit reached (%.1f%%)", self.max_daily_loss_percent
+            )
             self._open_circuit("Daily loss limit exceeded")
             return False
-        
+
         return True
-    
+
     def record_trade(
-        self,
-        symbol: str,
-        action: str,
-        profit_loss_percent: float,
-        amount_krw: float
+        self, symbol: str, action: str, profit_loss_percent: float, amount_krw: float
     ) -> None:
         """Record a completed trade.
-        
+
         Args:
             symbol: Trading symbol
             action: Trade action (buy, sell, etc.)
@@ -119,123 +137,142 @@ class CircuitBreaker:
         elif profit_loss_percent < -0.5:
             result = "loss"
             self.consecutive_losses += 1
-            
+
             # Check consecutive losses
             if self.consecutive_losses >= self.max_consecutive_losses:
-                self._open_circuit(f"Max consecutive losses ({self.max_consecutive_losses}) reached")
+                self._open_circuit(
+                    f"Max consecutive losses ({self.max_consecutive_losses}) reached"
+                )
         else:
             result = "neutral"
-        
+
         # Create trade record
         record = {
-            'symbol': symbol,
-            'timestamp': datetime.now().isoformat(),
-            'action': action,
-            'result': result,
-            'profit_loss_percent': profit_loss_percent,
-            'amount_krw': amount_krw
+            "symbol": symbol,
+            "timestamp": datetime.now().isoformat(),
+            "action": action,
+            "result": result,
+            "profit_loss_percent": profit_loss_percent,
+            "amount_krw": amount_krw,
         }
-        
+
         self.trade_history.append(record)
         self._save_data()
-        
-        logger.info("Recorded trade: %s %s %.2f%% (%s), consecutive_losses=%d",
-                   symbol, action, profit_loss_percent, result, self.consecutive_losses)
-    
-    # USED
+
+        logger.info(
+            "Recorded trade: %s %s %.2f%% (%s), consecutive_losses=%d",
+            symbol,
+            action,
+            profit_loss_percent,
+            result,
+            self.consecutive_losses,
+        )
+
     def _check_hourly_trade_limit(self) -> bool:
         """Check if hourly trade limit is exceeded.
-        
+
         Returns:
             bool: True if limit exceeded, False otherwise
         """
         one_hour_ago = datetime.now() - timedelta(hours=1)
         recent_trades = [
-            t for t in self.trade_history
-            if datetime.fromisoformat(t['timestamp']) > one_hour_ago
+            t
+            for t in self.trade_history
+            if _parse_timestamp(t.get("timestamp")) > one_hour_ago
         ]
         return len(recent_trades) >= self.max_trades_per_hour
-    
-    # USED
+
     def _check_daily_loss_limit(self) -> bool:
         """Check if daily loss limit is exceeded.
-        
+
         Returns:
             bool: True if limit exceeded, False otherwise
         """
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         today_trades = [
-            t for t in self.trade_history
-            if datetime.fromisoformat(t['timestamp']) >= today_start
+            t
+            for t in self.trade_history
+            if _parse_timestamp(t.get("timestamp")) >= today_start
         ]
-        
+
         if not today_trades:
             return False
-        
+
         # Calculate total daily profit/loss
         total_loss_percent = sum(
-            t['profit_loss_percent'] for t in today_trades
-            if t['profit_loss_percent'] < 0
+            t["profit_loss_percent"]
+            for t in today_trades
+            if t["profit_loss_percent"] < 0
         )
-        
-        return abs(total_loss_percent) >= self.max_daily_loss_percent
-    
+
+        return bool(abs(total_loss_percent) >= self.max_daily_loss_percent)
+
     def _open_circuit(self, reason: str) -> None:
         """Open the circuit breaker.
-        
+
         Args:
             reason: Reason for opening circuit
         """
         self.circuit_open = True
         self.circuit_open_time = datetime.now()
         self._save_data()
-        
-        logger.error("CIRCUIT BREAKER OPENED: %s. Trading disabled for %d hours",
-                    reason, self.cooldown_hours)
-    
+
+        logger.error(
+            "CIRCUIT BREAKER OPENED: %s. Trading disabled for %d hours",
+            reason,
+            self.cooldown_hours,
+        )
+
     def reset_circuit(self) -> None:
         """Reset the circuit breaker."""
         self.circuit_open = False
         self.circuit_open_time = None
         self.consecutive_losses = 0
         self._save_data()
-        
+
         logger.info("Circuit breaker reset. Trading enabled.")
-    
+
     def get_status(self) -> Dict[str, Any]:
         """Get current circuit breaker status.
-        
+
         Returns:
             Dict containing status information
         """
         status = {
-            'circuit_open': self.circuit_open,
-            'consecutive_losses': self.consecutive_losses,
-            'trades_last_hour': len([
-                t for t in self.trade_history
-                if datetime.fromisoformat(t['timestamp']) > datetime.now() - timedelta(hours=1)
-            ]),
-            'daily_loss_percent': 0.0
+            "circuit_open": self.circuit_open,
+            "consecutive_losses": self.consecutive_losses,
+            "trades_last_hour": len(
+                [
+                    t
+                    for t in self.trade_history
+                    if _parse_timestamp(t.get("timestamp"))
+                    > datetime.now() - timedelta(hours=1)
+                ]
+            ),
+            "daily_loss_percent": 0.0,
         }
-        
+
         # Calculate daily loss
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         today_trades = [
-            t for t in self.trade_history
-            if datetime.fromisoformat(t['timestamp']) >= today_start
+            t
+            for t in self.trade_history
+            if _parse_timestamp(t.get("timestamp")) >= today_start
         ]
-        
+
         if today_trades:
-            status['daily_loss_percent'] = abs(sum(
-                t['profit_loss_percent'] for t in today_trades
-                if t['profit_loss_percent'] < 0
-            ))
-        
+            status["daily_loss_percent"] = abs(
+                sum(
+                    t["profit_loss_percent"]
+                    for t in today_trades
+                    if t["profit_loss_percent"] < 0
+                )
+            )
+
         if self.circuit_open and self.circuit_open_time:
             cooldown_end = self.circuit_open_time + timedelta(hours=self.cooldown_hours)
-            status['cooldown_remaining_minutes'] = max(
-                0,
-                (cooldown_end - datetime.now()).total_seconds() / 60
+            status["cooldown_remaining_minutes"] = max(
+                0, (cooldown_end - datetime.now()).total_seconds() / 60
             )
-        
+
         return status
