@@ -7,5 +7,5 @@ used in trading analysis.
 from .openai_client import OpenAIClient
 
 __all__ = [
-    'OpenAIClient',
+    "OpenAIClient",
 ]

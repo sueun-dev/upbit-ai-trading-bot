@@ -7,6 +7,6 @@ from various sources.
 import logging
 
 # Suppress feedparser's internal logging to reduce verbosity
-logging.getLogger('feedparser').setLevel(logging.ERROR)
+logging.getLogger("feedparser").setLevel(logging.ERROR)
 
-__all__ = [] 
+__all__ = []
