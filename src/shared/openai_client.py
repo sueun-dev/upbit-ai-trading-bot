@@ -5,7 +5,7 @@ interactions.
 """
 
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import openai
 
@@ -25,12 +25,12 @@ class OpenAIClient:
         model: Default model to use for completions.
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize OpenAI client.
-        
+
         Args:
-            api_key: OpenAI API key.
-            model: OpenAI model to use for completions.
+            api_key: OpenAI API key. If None, the OpenAI SDK falls back to
+                the OPENAI_API_KEY environment variable.
         """
         self.client = openai.OpenAI(api_key=api_key)
     

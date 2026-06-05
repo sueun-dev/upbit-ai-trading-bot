@@ -9,7 +9,7 @@ import logging
 import sqlite3
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from src.infrastructure.database import get_db_path
 from src.shared.openai_client import OpenAIClient
@@ -79,7 +79,7 @@ class PatternLearner:
     - Performance tracking
     """
     # USED
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize the pattern learner.
         
         Args:
@@ -372,7 +372,7 @@ class PatternLearner:
             0,
             datetime.now()
         ))
-        return cursor.lastrowid
+        return cursor.lastrowid if cursor.lastrowid is not None else 0
     
     def _insert_pattern_outcome(
         self,
@@ -420,13 +420,13 @@ class PatternLearner:
         self,
         conn: sqlite3.Connection,
         pattern: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> Optional[Dict[str, Any]]:
         """Calculate pattern statistics from outcomes.
-        
+
         Args:
             conn: Database connection.
             pattern: Pattern features.
-            
+
         Returns:
             Statistics dictionary or None.
         """
@@ -541,12 +541,12 @@ class PatternLearner:
     def _get_pattern_stats_for_lesson(
         self,
         pattern: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> Optional[Dict[str, Any]]:
         """Get pattern statistics for lesson generation.
-        
+
         Args:
             pattern: Pattern features.
-            
+
         Returns:
             Pattern statistics or None.
         """

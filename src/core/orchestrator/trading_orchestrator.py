@@ -7,7 +7,7 @@ and trade execution with comprehensive safety systems.
 import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.analysis.ai_analyzer import AIAnalyzer
 from src.analysis.enhanced_market_analyzer import enhanced_market_analyzer
@@ -122,9 +122,9 @@ class TradingOrchestrator:
 
     def __init__(
         self,
-        access_key: str,
-        secret_key: str,
-        openai_api_key: str,
+        access_key: Optional[str],
+        secret_key: Optional[str],
+        openai_api_key: Optional[str],
         trade_analyzer: AILearningSystem
     ) -> None:
         """Initialize orchestrator with trader and AI analyzer.
@@ -201,17 +201,25 @@ class TradingOrchestrator:
         return symbols
 
     # USED
-    def collect_market_data(self, symbols: List[str]) -> Dict[str, Dict]:
+    def collect_market_data(
+        self,
+        symbols: List[str],
+        portfolio: Optional[Dict] = None
+    ) -> Dict[str, Dict]:
         """Fetch enhanced market data for symbols.
-        
+
         Args:
             symbols: List of cryptocurrency symbols.
-            
+            portfolio: Pre-fetched portfolio status to determine holdings. If
+                omitted, the portfolio is fetched from the trader. Passing it in
+                avoids a redundant Upbit API call.
+
         Returns:
             Dictionary mapping symbols to their market data.
         """
-        # Get portfolio to check holdings
-        portfolio = self.trader.get_portfolio_status()
+        # Get portfolio to check holdings (reuse caller's when provided)
+        if portfolio is None:
+            portfolio = self.trader.get_portfolio_status()
         held_assets = set(portfolio.get('assets', {}).keys())
         
         data_map: Dict[str, Dict] = {}
@@ -567,7 +575,7 @@ class TradingOrchestrator:
         # 4. Collect market data for all symbols (news + portfolio)
         market_data = {}
         if symbols:
-            market_data = self.collect_market_data(symbols)
+            market_data = self.collect_market_data(symbols, portfolio=portfolio)
             if not market_data:
                 logger.error(LOG_NO_MARKET_DATA)
                 market_data = {}
@@ -845,11 +853,12 @@ Return ONLY a number between 0.05 and 0.50 (e.g., 0.15 for 15%).
         # Skip if already has stop-loss recommendation
         if 'stop_loss_recommendation' in decision:
             return decision
-        
+
+        # Resolve outside the try so the except fallback can rely on them
+        symbol = market_data.get('symbol', 'UNKNOWN')
+        current_price = market_data.get('current_price', 0)
+
         try:
-            symbol = market_data.get('symbol', 'UNKNOWN')
-            current_price = market_data.get('current_price', 0)
-            
             prompt = f"""Determine optimal stop-loss for this position:
 
 Symbol: {symbol}
@@ -1068,7 +1077,7 @@ Return ONLY a decimal number between 0.02 and 0.15 (e.g., 0.05 for 5% stop-loss)
         Returns:
             True if stop-loss decision, False otherwise.
         """
-        return (
+        return bool(
             decision.get('stop_loss_trigger') and
             decision.get('action') in [ACTION_SELL_ALL, ACTION_PARTIAL_SELL]
         )

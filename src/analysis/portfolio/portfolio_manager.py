@@ -86,7 +86,7 @@ def _calculate_portfolio_metrics(krw_balance: float, crypto_assets: Dict[str, An
     }
 
 # USED
-def _analyze_portfolio_with_ai(krw_balance: float, total_balance: float, crypto_assets: Dict[str, Any], api_key: str) -> Dict[str, Any]:
+def _analyze_portfolio_with_ai(krw_balance: float, total_balance: float, crypto_assets: Dict[str, Any], api_key: Optional[str]) -> Dict[str, Any]:
     """Analyze portfolio using AI.
     
     Args:
@@ -154,7 +154,7 @@ def _analyze_portfolio_with_ai(krw_balance: float, total_balance: float, crypto_
 
 
 # USED
-def get_portfolio_status(upbit, api_key: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def get_portfolio_status(upbit, api_key: Optional[str] = None) -> Dict[str, Any]:
     """Get portfolio status with comprehensive error handling and AI analysis."""
     try:
         balance_data = _fetch_balances(upbit)

@@ -4,10 +4,9 @@ Data store for AI trading system - manages trading history, AI analysis results,
 
 import json
 import logging
-import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import sqlite3
 import threading
 
@@ -194,8 +193,8 @@ class DataStore:
                     trade_id = cursor.lastrowid
                     
             logger.info(f"Recorded trade #{trade_id}: {trade.symbol} {trade.action}")
-            return trade_id
-            
+            return trade_id if trade_id is not None else -1
+
         except Exception as e:
             logger.error(f"Failed to record trade: {e}")
             return -1
@@ -231,8 +230,9 @@ class DataStore:
             logger.error(f"Failed to record AI analysis: {e}")
             return False
     
-    def record_news(self, title: str, summary: str, source: str, url: str = None, 
-                   extracted_symbols: List[str] = None, sentiment_score: float = None) -> bool:
+    def record_news(self, title: str, summary: str, source: str, url: Optional[str] = None,
+                   extracted_symbols: Optional[List[str]] = None,
+                   sentiment_score: Optional[float] = None) -> bool:
         """Record news item with analysis, checking for duplicates."""
         try:
             with self.lock:

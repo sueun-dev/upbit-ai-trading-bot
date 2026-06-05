@@ -4,14 +4,14 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 HOLDINGS_FILE = "holdings.json"
 
 
-def record_purchase(symbol: str, price: float, amount_krw: float = None) -> None:
+def record_purchase(symbol: str, price: float, amount_krw: Optional[float] = None) -> None:
     """Record a purchase for tracking purposes.
     
     Args:

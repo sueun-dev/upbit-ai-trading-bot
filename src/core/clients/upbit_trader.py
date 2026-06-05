@@ -69,7 +69,7 @@ class UpbitTrader:
     Handles market buy/sell orders and implements various trading strategies
     including averaging down and partial selling.
     """
-    def __init__(self, access_key: str, secret_key: str):
+    def __init__(self, access_key: Optional[str], secret_key: Optional[str]):
         """Initialize Upbit client and load available KRW market symbols.
         
         Args:
@@ -321,7 +321,12 @@ class UpbitTrader:
             return self._execute_regular_buy(symbol)
         
         if action == ACTION_BUY_MORE:
-            return self._buy_average_down(symbol, decision_data["averaging_analysis"])
+            # _validate_buy_more_action guarantees averaging_analysis is present
+            # here, but guard defensively in case this is called directly.
+            averaging_analysis = decision_data.get("averaging_analysis") if decision_data else None
+            if averaging_analysis is None:
+                return self._execute_regular_buy(symbol)
+            return self._buy_average_down(symbol, averaging_analysis)
         
         if action == ACTION_SELL_ALL:
             return self._execute_sell_all(symbol)
@@ -393,10 +398,9 @@ class UpbitTrader:
         
         # Check if we have sufficient KRW balance
         try:
-            from src.analysis.portfolio.portfolio_manager import PortfolioManager
-            pm = PortfolioManager(self.client)
-            available_krw = pm.get_krw_balance()
-            
+            portfolio = self.get_portfolio_status()
+            available_krw = portfolio.get('available_krw', 0)
+
             if available_krw < amount:
                 logger.error(f"Insufficient KRW balance for averaging down. Required: {amount:,.0f} KRW, Available: {available_krw:,.0f} KRW")
                 return False
@@ -511,7 +515,7 @@ class UpbitTrader:
         
         return portfolio["assets"][symbol]["balance"]
     
-    def get_portfolio_status(self, api_key: str = None) -> Dict[str, Any]:
+    def get_portfolio_status(self, api_key: Optional[str] = None) -> Dict[str, Any]:
         """Get portfolio status through portfolio manager.
         
         Args:

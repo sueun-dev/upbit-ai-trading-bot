@@ -5,7 +5,7 @@ reducing single-point-of-failure risks and improving decision quality.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -48,7 +48,7 @@ class MultiAIValidator:
     """
     
     # USED
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize the multi-AI validator.
         
         Args:
@@ -91,7 +91,7 @@ class MultiAIValidator:
                 )
                 
                 # Aggregate validations
-                final_decision = self._aggregate_validations(decision, validations, symbol, portfolio)
+                final_decision = self._aggregate_validations(decision, validations)
                 
                 # Add validation metadata
                 final_decision['validation_results'] = validations
@@ -250,9 +250,7 @@ class MultiAIValidator:
     def _aggregate_validations(
         self,
         original_decision: Dict[str, Any],
-        validations: Dict[str, Dict[str, Any]],
-        symbol: str,
-        portfolio: Dict[str, Any]
+        validations: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Aggregate multiple validation results into final decision.
         
@@ -272,7 +270,7 @@ class MultiAIValidator:
         final_decision = original_decision.copy()
         
         # Apply validation rules
-        self._apply_validation_rules(final_decision, original_decision, approval_rate, symbol, portfolio)
+        self._apply_validation_rules(final_decision, original_decision, approval_rate)
         
         # Adjust confidence based on consensus
         final_decision['confidence'] = avg_confidence * consensus_factor
@@ -323,24 +321,16 @@ class MultiAIValidator:
         self,
         final_decision: Dict[str, Any],
         original_decision: Dict[str, Any],
-        approval_rate: float,
-        symbol: str,
-        portfolio: Dict[str, Any]
+        approval_rate: float
     ) -> None:
         """Apply validation rules to modify decision.
-        
+
         Args:
             final_decision: Decision to modify (modified in place).
             original_decision: Original decision for reference.
             approval_rate: Calculated approval rate.
-            symbol: The symbol being validated.
-            portfolio: Current portfolio status.
         """
         if approval_rate < MAJORITY_REJECTION_THRESHOLD:
-            # Check if asset is held
-            held_assets = set(portfolio.get('assets', {}).keys())
-            is_held = symbol in held_assets
-            
             if original_decision['action'] in BUY_ACTIONS:
                 # If rejected buy action, change to skip (not hold)
                 final_decision['action'] = 'skip'

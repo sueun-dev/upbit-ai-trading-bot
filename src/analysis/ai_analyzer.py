@@ -10,7 +10,6 @@ import re
 from typing import Any, Dict, List, Optional
 
 from src.shared.openai_client import OpenAIClient
-import pyupbit
 # Analysis constants
 MAX_NEWS_FOR_ANALYSIS = 10
 MAX_NEWS_FOR_SUMMARY = 5

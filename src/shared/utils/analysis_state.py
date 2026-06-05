@@ -1,7 +1,6 @@
 """Global analysis state manager for real-time dashboard updates."""
 
 from datetime import datetime
-from typing import Dict, Any
 
 
 class AnalysisStateManager:

@@ -6,7 +6,7 @@ both successful and unsuccessful trades, especially stop-loss executions.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from src.analysis.pattern_learner import PatternLearner
 from src.shared.openai_client import OpenAIClient
@@ -112,7 +112,7 @@ class PostTradeAnalyzer:
     - Performance metrics calculation
     """
     
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize the post-trade analyzer.
         
         Args:
@@ -846,9 +846,9 @@ decision_quality, warning_signs, avoidable, key_lesson"""
         Returns:
             Slippage as a decimal.
         """
-        expected_entry = entry_data.get('expected_price', entry_data.get('price'))
+        expected_entry = entry_data.get('expected_price', entry_data.get('price')) or 0
         actual_entry = entry_data.get('price', 0)
-        
+
         if expected_entry > 0:
             return abs(actual_entry - expected_entry) / expected_entry
         return 0

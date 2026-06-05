@@ -5,7 +5,7 @@ position sizes based on market conditions, portfolio performance, and AI confide
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -96,7 +96,7 @@ class AdaptiveRiskManager:
             kelly_adjusted = self._apply_kelly_criterion(confidence, base_size)
             volatility_adjusted = self._adjust_for_volatility(kelly_adjusted, market_data)
             heat_adjusted = self._adjust_for_portfolio_heat(volatility_adjusted, portfolio)
-            ai_adjusted = size * (1.0 if ai_approved else AI_REJECTION_MULTIPLIER)
+            ai_adjusted = heat_adjusted * (1.0 if ai_approved else AI_REJECTION_MULTIPLIER)
             final_size = self._apply_position_limits(ai_adjusted, portfolio)
             
             # Convert to KRW amount
@@ -572,7 +572,7 @@ class AdaptiveRiskManager:
         
         return abs(today_loss) / start_of_day_value if today_loss < 0 else 0
     
-    def _get_start_of_day_portfolio_value(self, trades: List[Dict[str, Any]], target_date: datetime.date) -> float:
+    def _get_start_of_day_portfolio_value(self, trades: List[Dict[str, Any]], target_date: date) -> float:
         """Get portfolio value at start of day.
         
         Args:
@@ -594,15 +594,8 @@ class AdaptiveRiskManager:
                 except (ValueError, AttributeError):
                     pass
         
-        # If no trades today, try to get current portfolio value
-        try:
-            from src.shared.utils.data_store import get_latest_portfolio_status
-            status = get_latest_portfolio_status()
-            if status:
-                return status.get('total_balance', 0)
-        except Exception as e:
-            logger.warning(f"Failed to get portfolio status: {e}")
-        
+        # No trades found for the target date; caller treats 0 as "unknown"
+        # and applies its own fallback (see _calculate_daily_loss_ratio).
         return 0
     
     

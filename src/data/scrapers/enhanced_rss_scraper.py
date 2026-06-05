@@ -9,19 +9,18 @@ This module provides a more resilient RSS feed scraper that can handle:
 
 import logging
 import re
-import time
 import concurrent.futures
 import warnings
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+from datetime import datetime
 import xml.etree.ElementTree as ET
-from urllib.parse import urlparse
 from html import unescape
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import chardet
+import feedparser
 
 # Suppress chardet debug messages
 # chardet produces verbose debug logs during encoding detection that appear as errors
@@ -29,8 +28,6 @@ import chardet
 logging.getLogger('chardet').setLevel(logging.WARNING)
 logging.getLogger('chardet.charsetprober').setLevel(logging.WARNING)
 logging.getLogger('chardet.universaldetector').setLevel(logging.WARNING)
-
-import feedparser
 
 # HTTP Configuration
 USER_AGENTS = [
@@ -278,7 +275,10 @@ class EnhancedRSSAggregator:
             # Try to detect encoding
             detected = chardet.detect(raw_content)
             encoding = detected['encoding'] if detected['confidence'] > 0.7 else encoding_hint
-            
+            # chardet may report None even at high confidence (e.g. empty body)
+            if not encoding:
+                encoding = encoding_hint or 'utf-8'
+
             content = raw_content.decode(encoding)
 
             # Fix common XML issues
@@ -365,7 +365,7 @@ class EnhancedRSSAggregator:
             
             return articles
             
-        except ET.ParseError as e:
+        except ET.ParseError:
             logger.debug(f"XML parsing failed for {feed_config['name']}, trying regex extraction...")
             return []
     

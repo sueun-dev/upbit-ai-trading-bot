@@ -6,7 +6,7 @@ position sizes, drawdowns, correlations, and stop-loss triggers.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -100,7 +100,7 @@ class RiskMonitor:
     - Stop-loss triggers
     """
     # USED
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize the risk monitor.
         
         Args:
@@ -163,7 +163,7 @@ class RiskMonitor:
         except Exception as e:
             logger.error(f"Risk monitoring failed: {e}")
             return {
-                'error': error,
+                'error': str(e),
                 'overall_risk': RISK_LEVEL_UNKNOWN,
                 'recommendations': [MSG_RISK_ERROR]
             }

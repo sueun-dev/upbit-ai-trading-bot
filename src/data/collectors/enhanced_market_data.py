@@ -2,7 +2,6 @@
 
 import logging
 import pandas as pd
-import numpy as np
 import pyupbit
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple

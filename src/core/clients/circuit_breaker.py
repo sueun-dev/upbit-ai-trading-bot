@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class CircuitBreaker:
             self.circuit_open_time = datetime.fromisoformat(data['circuit_open_time']) if data.get('circuit_open_time') else None
             self.consecutive_losses = data.get('consecutive_losses', 0)
             logger.info(f"Loaded circuit breaker data: {len(self.trade_history)} trades, circuit_open={self.circuit_open}")
-        except:
+        except (OSError, json.JSONDecodeError, KeyError, ValueError):
             self.trade_history = []
             self.circuit_open = False
             self.circuit_open_time = None
@@ -202,7 +202,7 @@ class CircuitBreaker:
         
         logger.info("Circuit breaker reset. Trading enabled.")
     
-    def get_status(self) -> Dict[str, any]:
+    def get_status(self) -> Dict[str, Any]:
         """Get current circuit breaker status.
         
         Returns:

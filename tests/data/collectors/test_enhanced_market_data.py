@@ -1,10 +1,9 @@
 """Tests for EnhancedMarketDataCollector."""
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone
 from src.data.collectors.enhanced_market_data import (
     EnhancedMarketData,
     EnhancedMarketDataCollector
