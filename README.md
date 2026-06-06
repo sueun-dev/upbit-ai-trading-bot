@@ -1,8 +1,115 @@
 # Upbit AI Trading Bot
 
-AI-assisted Upbit trading stack for signal generation, orchestration, and operator dashboards.
+AI-assisted automated trading system for the Upbit exchange: news collection, market analysis, AI decision making, and trade execution with layered safety systems.
 
-AI 기반 업비트 암호화폐 자동 거래 시스템
+AI 기반 업비트 암호화폐 자동 거래 시스템 — 뉴스 수집, 시장 분석, AI 의사결정, 거래 실행을 안전장치와 함께 자동화합니다.
+
+> ⚠️ **실제 자금이 거래되는 라이브 트레이딩 봇입니다.** 암호화폐 거래에는 손실 위험이 따릅니다. 본인 책임 하에 사용하세요. This is live trading with real funds — use at your own risk.
+
+## 주요 기능 (Features)
+
+- **AI 의사결정**: OpenAI `gpt-4o-mini` 모델로 시장 데이터·뉴스·포트폴리오를 분석해 매수/매도/보유를 결정
+- **뉴스 수집**: 다수의 암호화폐 RSS 피드(CoinTelegraph, CoinDesk, Decrypt, The Block 등 20여 개)에서 기사를 수집
+- **기술적 분석**: RSI, MACD, Bollinger Bands, 지지/저항, 변동성 등 정량 지표 산출
+- **다중 AI 검증**: 동일 모델로 독립적인 교차 검증 단계를 거쳐 의사결정 신뢰도 보강
+- **적응형 리스크 관리**: 포지션 사이징, 손절매 추천, 포트폴리오 노출 한도 적용
+- **물타기(Averaging Down) 전략**: 설정 가능한 조건에서 추가 매수
+- **AI 학습 시스템**: 과거 거래를 분석해 성공률·실패 패턴 인사이트를 도출
+- **패턴 학습**: 거래 패턴을 SQLite에 저장하고 향후 의사결정에 교훈으로 반영
+- **안전장치**: Circuit Breaker, 실시간 리스크 모니터링, 자동 손절매, 거래 후 분석
+
+## 요구 사항 (Prerequisites)
+
+- Python 3.11 이상
+- [Poetry](https://python-poetry.org/) (의존성 관리, 권장)
+- Upbit Open API 키 (Access / Secret)
+- OpenAI API 키
+
+## 설치 (Installation)
+
+```bash
+# 저장소 클론
+git clone https://github.com/sueun-dev/upbit-ai-trading-bot.git
+cd upbit-ai-trading-bot
+
+# 의존성 설치 (Poetry)
+poetry install
+```
+
+Poetry를 사용하지 않는 경우 `pyproject.toml`에 명시된 런타임 의존성(`pyupbit`, `openai`, `requests`, `python-dotenv`, `lxml`, `pandas`, `feedparser`, `chardet`)을 직접 설치하세요.
+
+## 환경 변수 설정 (Configuration)
+
+API 키는 환경 변수 또는 프로젝트 루트의 `.env` 파일로 제공합니다. (`python-dotenv`로 자동 로드되며, `.env`는 `.gitignore`에 포함되어 있습니다.)
+
+```bash
+# .env
+UPBIT_ACCESS_KEY=your_upbit_access_key
+UPBIT_SECRET_KEY=your_upbit_secret_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+세 변수 중 하나라도 없으면 프로그램이 시작 시 명확한 메시지와 함께 종료됩니다.
+
+기타 전략·루프 설정값은 `src/infrastructure/config/settings.py`에서 조정할 수 있습니다 (예: `CHECK_INTERVAL_SECONDS`, 투자 비율, 손절 기준, 사용 AI 모델 등).
+
+## 실행 (Usage)
+
+```bash
+# Poetry 환경에서 실행
+poetry run python main.py
+
+# 또는 콘솔 스크립트 사용 (poetry install 이후)
+poetry run upbit-trader
+
+# Poetry 없이 직접 실행
+python main.py
+```
+
+실행하면 메인 루프가 시작되어 `CHECK_INTERVAL_SECONDS`(기본 3600초 = 1시간)마다 거래 사이클을 수행합니다. 연속 에러가 `MAX_CONSECUTIVE_ERRORS`(5회)를 초과하면 시스템이 안전하게 정지합니다.
+
+## 테스트 (Testing)
+
+```bash
+# 개발 의존성 포함 설치
+poetry install
+
+# 테스트 실행
+poetry run pytest
+
+# 커버리지 포함
+poetry run pytest --cov=src
+```
+
+코드 품질 도구도 dev 의존성으로 제공됩니다:
+
+```bash
+poetry run black src tests      # 코드 포매팅
+poetry run isort src tests      # import 정렬
+poetry run flake8 src tests     # 린팅
+poetry run mypy src             # 타입 체크
+```
+
+## 프로젝트 구조 (Project Layout)
+
+```
+.
+├── main.py                          # 진입점: AI 학습 초기화 후 메인 거래 루프 실행
+├── pyproject.toml                   # Poetry 패키지·의존성·도구 설정
+├── src/
+│   ├── core/
+│   │   ├── orchestrator/            # 거래 사이클 오케스트레이션
+│   │   └── clients/                 # Upbit 트레이더, Circuit Breaker
+│   ├── analysis/                    # AI 분석, 다중 AI 검증, 리스크/포트폴리오/패턴 학습
+│   ├── data/
+│   │   ├── collectors/              # 시장 데이터·기술적 지표 수집
+│   │   └── scrapers/                # RSS 기반 뉴스 수집
+│   ├── infrastructure/
+│   │   ├── config/                  # 설정값·프롬프트 템플릿
+│   │   └── database/                # DB 경로 헬퍼
+│   └── shared/                      # 공통 상수, OpenAI 클라이언트, 유틸/데이터 스토어
+└── tests/                           # pytest 테스트 스위트
+```
 
 ## 시스템 전체 로직 플로우
 
@@ -16,7 +123,7 @@ setup_logging()
 # AI 학습 시스템 초기화
 trade_analyzer = AILearningSystem()
 
-# 과거 거래 분석 (30일)
+# 과거 거래 분석 (30일, AI_LEARNING_DAYS_BACK)
 insights = trade_analyzer.analyze_historical_trades(days_back=30)
 # Return 예시:
 # [
@@ -55,7 +162,7 @@ orchestrator = TradingOrchestrator(
 #### 1.3 메인 거래 루프 실행
 ```python
 run_main_trading_loop(orchestrator)
-# CHECK_INTERVAL_SECONDS(60초)마다 거래 사이클 실행
+# CHECK_INTERVAL_SECONDS(기본 3600초)마다 거래 사이클 실행
 # 최대 연속 에러 5회(MAX_CONSECUTIVE_ERRORS)까지 허용
 ```
 
@@ -98,18 +205,19 @@ portfolio = self.trader.get_portfolio_status()
 ##### 2.1.2 뉴스 수집
 ```python
 news_list = self.collect_news()
+# 다수의 RSS 피드에서 기사 수집
 # Return 예시:
 # [
 #   {
 #     "title": "비트코인 급등, 7만 달러 돌파",
 #     "summary": "비트코인이 기관 투자자들의 매수세로 급등...",
-#     "source": "coinness",
+#     "source": "CoinDesk",
 #     "url": "https://example.com/news/123"
 #   },
 #   {
 #     "title": "이더리움 업그레이드 완료",
 #     "summary": "이더리움 덴쿤 업그레이드가 성공적으로...",
-#     "source": "tokenpost",
+#     "source": "CoinTelegraph",
 #     "url": "https://example.com/news/456"
 #   }
 # ]
@@ -198,11 +306,12 @@ self._apply_trade_history_insights(raw_decisions)
 # 예: DOGE 성공률 30% → confidence *= 0.5
 ```
 
-##### 2.2.4 멀티 AI 검증
+##### 2.2.4 다중 AI 검증
 ```python
 validated_decisions = self.multi_ai_validator.cross_validate_multiple_decisions(
     raw_decisions, market_data, portfolio, news_list
 )
+# 동일 모델로 독립적인 교차 검증 단계를 수행
 # Return 예시:
 # {
 #   "ETH": {
@@ -345,30 +454,16 @@ analysis_result = AIAnalysisResult(
 # 💰 Total Value: 1,050,000원
 # 💵 Total Investment: 1,000,000원
 # 📈 Total P&L: +50,000원 (+5.00%)
-# 
+#
 # 🪙 Holding 3 coins:
 # ------------------------------------------------------------
 # 🟢 BTC: 0.00123400 @ 65,000,000원 → 68,000,000원 | Value: 83,872원 | P&L: +3,872원 (+4.84%)
 #    📊 Historical success rate: 75%
 # 🟢 ETH: 0.01360000 @ 2,200,000원 → 2,300,000원 | Value: 31,280원 | P&L: +1,360원 (+4.55%)
 # 🔴 XRP: 100.00000000 @ 800원 → 750원 | Value: 75,000원 | P&L: -5,000원 (-6.25%)
-# 
+#
 # 💵 Available KRW: 859,848원
 # 📈 Last 24h: 7/10 successful trades
-```
-
-## 실행 방법
-
-### 1. 메인 프로그램 시작 (main.py)
-
-Poetry를 사용하는 경우:
-```bash
-poetry run python3 main.py
-```
-
-또는 직접 실행:
-```bash
-python3 main.py
 ```
 
 ## 주요 변수 및 상수
@@ -376,15 +471,24 @@ python3 main.py
 ### main.py
 - `MAX_CONSECUTIVE_ERRORS = 5` - 최대 연속 에러 허용 횟수
 - `AI_LEARNING_DAYS_BACK = 30` - AI 학습 분석 기간 (일)
-- `CHECK_INTERVAL_SECONDS = 60` - 거래 사이클 실행 간격 (초)
 
-### trading_orchestrator.py
+### src/infrastructure/config/settings.py
+- `CHECK_INTERVAL_SECONDS = 3600` - 거래 사이클 실행 간격 (초, 기본 1시간)
+- `MAX_INVEST_RATIO_PER_COIN = 0.20` - 단일 코인 최대 자산 비중
+- `MAX_TOTAL_INVEST_RATIO = 0.5` - 전체 자산 중 최대 투자 비율
+- `DEFAULT_BUY_AMOUNT_KRW = 30_000` - 기본 매수 금액
+- `MIN_ORDER_KRW = 10_000` - 업비트 최소 주문 금액
+- `STOP_LOSS_THRESHOLD = -0.15` - 손절 기준
+- `EMERGENCY_STOP_LOSS = -0.25` - 긴급 손절 기준
+- `AI_MODEL = "gpt-4o-mini"` - 사용 AI 모델
+
+### src/core/orchestrator/trading_orchestrator.py
 - `DEFAULT_BUY_AMOUNT_KRW = 30_000` - 기본 매수 금액
 - `MIN_VIABLE_TRADE_AMOUNT = 10000` - 최소 거래 금액
 - `STOP_LOSS_CONFIDENCE = 0.9` - 손절매 신뢰도
 - `MAX_NEWS_ARTICLES = 15` - 최대 뉴스 수집 개수
 
-### 거래 액션 타입
+### 거래 액션 타입 (src/shared/constants.py)
 - `ACTION_BUY = 'buy'` - 신규 매수
 - `ACTION_BUY_MORE = 'buy_more'` - 추가 매수 (물타기)
 - `ACTION_SELL_ALL = 'sell_all'` - 전량 매도
@@ -394,7 +498,7 @@ python3 main.py
 ## 시스템 안전장치
 
 1. **Circuit Breaker**: 과도한 거래 방지
-2. **Multi-AI Validation**: 복수 AI 모델을 통한 교차 검증
+2. **다중 AI 검증 (Multi-AI Validation)**: 동일 모델의 독립적인 교차 검증으로 의사결정 보강
 3. **Risk Monitor**: 실시간 리스크 모니터링
 4. **Stop-Loss Triggers**: 자동 손절매 시스템
 5. **Pattern Learning**: 과거 패턴 학습을 통한 개선
@@ -402,12 +506,17 @@ python3 main.py
 
 ## 데이터베이스 구조
 
-- `trading_system.db`: 거래 기록, AI 분석 결과, 뉴스 저장
-- `pattern_learning.db`: 학습된 패턴 및 교훈 저장
+로컬 SQLite 데이터베이스를 사용합니다.
+
+- `trading_data.db`: 거래 기록, AI 분석 결과, 뉴스 저장 (`DataStore`, `AILearningSystem`)
+- `pattern_learning.db`: 학습된 패턴 및 교훈 저장 (`PatternLearner`)
 
 ## 에러 처리
 
-- 연속 에러 5회 초과 시 시스템 정지
+- 연속 에러 5회(`MAX_CONSECUTIVE_ERRORS`) 초과 시 시스템 정지
 - 각 에러 발생 시 대기 시간 증가 (최대 3600초)
 - Circuit breaker를 통한 거래 제한
-EOF < /dev/null
+
+## 라이선스 (License)
+
+이 프로젝트는 [MIT License](LICENSE)로 배포됩니다.
