@@ -99,11 +99,11 @@ class RiskMonitor:
     - Stop-loss triggers
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize the risk monitor.
 
         Args:
-            api_key: OpenAI API key
+            api_key: Backward-compatible placeholder; local OAuth bridge is used.
         """
         self.openai_client = OpenAIClient(api_key=api_key)
         self.risk_thresholds = {

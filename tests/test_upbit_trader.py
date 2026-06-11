@@ -47,9 +47,39 @@ class TestUpbitTrader(unittest.TestCase):
     ) -> None:
         trader = _make_trader(mock_pyupbit)
         mock_pyupbit.get_current_price.return_value = 1000.0
+        trader.get_portfolio_status = lambda: {"available_krw": 100_000}  # type: ignore[method-assign]
         # buy_more with no averaging_analysis must place a regular buy, not crash.
         self.assertTrue(trader.execute_trade("BTC", "buy_more", "no analysis", {}))
         trader.upbit.buy_market_order.assert_called_once()
+
+    @patch("src.core.clients.upbit_trader.record_purchase")
+    @patch("src.core.clients.upbit_trader.pyupbit")
+    def test_regular_buy_uses_risk_managed_amount(
+        self, mock_pyupbit, _mock_record
+    ) -> None:
+        trader = _make_trader(mock_pyupbit)
+        mock_pyupbit.get_current_price.return_value = 1000.0
+        trader.get_portfolio_status = lambda: {"available_krw": 100_000}  # type: ignore[method-assign]
+
+        self.assertTrue(
+            trader.execute_trade(
+                "BTC",
+                "buy",
+                "sized by risk manager",
+                {"recommended_amount_krw": 75_000},
+            )
+        )
+
+        trader.upbit.buy_market_order.assert_called_once_with("KRW-BTC", 75_000)
+
+    @patch("src.core.clients.upbit_trader.pyupbit")
+    def test_regular_buy_caps_amount_to_available_krw(self, mock_pyupbit) -> None:
+        trader = _make_trader(mock_pyupbit)
+        trader.get_portfolio_status = lambda: {"available_krw": 12_000}  # type: ignore[method-assign]
+
+        amount = trader._resolve_buy_amount({"recommended_amount_krw": 75_000})
+
+        self.assertEqual(amount, 12_000)
 
     @patch("src.core.clients.upbit_trader.pyupbit")
     def test_unknown_action_returns_false(self, mock_pyupbit) -> None:

@@ -6,7 +6,6 @@ from src.analysis.ai_learning.ai_learning_system import AILearningSystem
 from src.core.orchestrator.trading_orchestrator import TradingOrchestrator
 from src.infrastructure.config.settings import (
     CHECK_INTERVAL_SECONDS,
-    OPENAI_API_KEY,
     UPBIT_ACCESS_KEY,
     UPBIT_SECRET_KEY,
 )
@@ -83,7 +82,6 @@ def main() -> None:
     orchestrator = TradingOrchestrator(
         access_key=_require_env("UPBIT_ACCESS_KEY", UPBIT_ACCESS_KEY),
         secret_key=_require_env("UPBIT_SECRET_KEY", UPBIT_SECRET_KEY),
-        openai_api_key=_require_env("OPENAI_API_KEY", OPENAI_API_KEY),
         trade_analyzer=trade_analyzer,
     )
 

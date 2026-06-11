@@ -163,12 +163,14 @@ class AIAnalyzer:
         for symbol, data in market_data.items():
             price = data.get("current_price", 0)
             change = data.get("price_24h_change", 0)
-            volume = data.get("volume_24h", 0)
+            turnover_krw = data.get("volume_24h_krw", 0)
 
             # Include comprehensive analysis if available
             analysis = data.get("comprehensive_analysis", {})
             trend = analysis.get("trend", "unknown")
             signal = analysis.get("signal", "neutral")
+            composite = analysis.get("composite_score", 0)
+            risk_flags = analysis.get("risk_flags", [])
 
             # Check if this asset is held in portfolio
             is_held = data.get("is_held", False)
@@ -186,8 +188,13 @@ class AIAnalyzer:
 
             lines.append(
                 f"{symbol}{held_indicator}: Price={price_str} KRW, "
-                f"24h Change={change:.2f}%, Volume={volume:,.0f} KRW, "
-                f"Trend={trend}, Signal={signal}"
+                f"24h Change={change:.2f}%, 24h Turnover={turnover_krw:,.0f} KRW, "
+                f"Signal={signal}, Composite={composite:.2f}, Trend={trend}, "
+                f"RSI14={data.get('rsi_14', 0):.1f}, MACD_hist={data.get('macd_histogram', 0):.4f}, "
+                f"ADX={data.get('adx', 0):.1f}, ATR%={data.get('atr_percent', 0):.2f}, "
+                f"RelVolZ={data.get('volume_zscore_30d', 0):.2f}, "
+                f"DonchianPos={data.get('donchian_position_20', 0.5):.2f}, "
+                f"RiskFlags={risk_flags or 'none'}"
             )
 
         return "\n".join(lines)

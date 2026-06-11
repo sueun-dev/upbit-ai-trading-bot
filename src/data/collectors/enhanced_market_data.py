@@ -39,10 +39,13 @@ class EnhancedMarketData:
     # Volume Analysis
     volume_1h: float
     volume_24h: float
+    volume_24h_krw: float
     volume_7d_avg: float
+    volume_7d_avg_krw: float
     volume_30d_avg: float
     volume_ratio_1h_24h: float
     volume_ratio_24h_7d: float
+    volume_zscore_30d: float
     vwap_24h: float
     vwap_7d: float
 
@@ -64,11 +67,14 @@ class EnhancedMarketData:
     adx_di_plus: float
     adx_di_minus: float
     atr_14: float
+    atr_percent: float
     ema_9: float
     ema_21: float
     ema_50: float
     ema_200: float
     ema_cross_signal: str
+    ema_alignment_score: float
+    trend_strength_score: float
     ichimoku_tenkan: float
     ichimoku_kijun: float
     ichimoku_senkou_a: float
@@ -80,6 +86,9 @@ class EnhancedMarketData:
     cci_20: float
     williams_r: float
     roc_10: float
+    donchian_high_20: float
+    donchian_low_20: float
+    donchian_position_20: float
     pivot_point: float
     pivot_r1: float
     pivot_r2: float
@@ -270,13 +279,35 @@ class EnhancedMarketDataCollector:
 
             # 24h volume
             volume_24h = df_1d.iloc[-1]["volume"] if len(df_1d) > 0 else 0.0
+            daily_turnover_krw = df_1d["close"] * df_1d["volume"]
+            volume_24h_krw = (
+                float(daily_turnover_krw.iloc[-1])
+                if len(daily_turnover_krw) > 0
+                else 0.0
+            )
 
             # 7d and 30d average volumes
             volume_7d_avg = (
                 df_1d.iloc[-7:]["volume"].mean() if len(df_1d) >= 7 else volume_24h
             )
+            volume_7d_avg_krw = (
+                daily_turnover_krw.iloc[-7:].mean()
+                if len(daily_turnover_krw) >= 7
+                else volume_24h_krw
+            )
             volume_30d_avg = (
                 df_1d.iloc[-30:]["volume"].mean() if len(df_1d) >= 30 else volume_24h
+            )
+            turnover_std_30d = (
+                daily_turnover_krw.iloc[-30:].std()
+                if len(daily_turnover_krw) >= 30
+                else 0.0
+            )
+            volume_zscore_30d = (
+                (volume_24h_krw - daily_turnover_krw.iloc[-30:].mean())
+                / turnover_std_30d
+                if turnover_std_30d and not pd.isna(turnover_std_30d)
+                else 0.0
             )
 
             # Volume ratios
@@ -292,10 +323,13 @@ class EnhancedMarketDataCollector:
             return {
                 "volume_1h": round(volume_1h, 2),
                 "volume_24h": round(volume_24h, 2),
+                "volume_24h_krw": round(volume_24h_krw, 2),
                 "volume_7d_avg": round(volume_7d_avg, 2),
+                "volume_7d_avg_krw": round(float(volume_7d_avg_krw), 2),
                 "volume_30d_avg": round(volume_30d_avg, 2),
                 "volume_ratio_1h_24h": round(volume_ratio_1h_24h, 2),
                 "volume_ratio_24h_7d": round(volume_ratio_24h_7d, 2),
+                "volume_zscore_30d": round(float(volume_zscore_30d), 3),
                 "vwap_24h": round(vwap_24h, 2),
                 "vwap_7d": round(vwap_7d, 2),
             }
@@ -307,10 +341,13 @@ class EnhancedMarketDataCollector:
                 for k in [
                     "volume_1h",
                     "volume_24h",
+                    "volume_24h_krw",
                     "volume_7d_avg",
+                    "volume_7d_avg_krw",
                     "volume_30d_avg",
                     "volume_ratio_1h_24h",
                     "volume_ratio_24h_7d",
+                    "volume_zscore_30d",
                     "vwap_24h",
                     "vwap_7d",
                 ]
@@ -362,6 +399,8 @@ class EnhancedMarketDataCollector:
 
             # ATR calculation
             atr_14 = self._calculate_atr(highs, lows, closes, 14)
+            last_close = float(closes.iloc[-1]) if len(closes) > 0 else 0.0
+            atr_percent = (atr_14 / last_close * 100) if last_close > 0 else 0.0
 
             # EMA calculations with safety checks
             ema_9 = (
@@ -381,6 +420,12 @@ class EnhancedMarketDataCollector:
 
             # EMA crossover signal
             ema_cross_signal = self._get_ema_cross_signal(ema_9, ema_21, ema_50)
+            ema_alignment_score = self._calculate_ema_alignment_score(
+                ema_9, ema_21, ema_50, ema_200
+            )
+            trend_strength_score = self._calculate_trend_strength_score(
+                adx, di_plus, di_minus
+            )
 
             # Ichimoku Cloud
             ichimoku = self._calculate_ichimoku(highs, lows, closes)
@@ -399,6 +444,9 @@ class EnhancedMarketDataCollector:
 
             # ROC (Rate of Change)
             roc_10 = self._calculate_roc(closes, 10)
+
+            # Donchian channel position (0 near 20d low, 1 near 20d high)
+            donchian = self._calculate_donchian_channel(highs, lows, closes)
 
             # Pivot Points with safety check
             if len(highs) > 0 and len(lows) > 0 and len(closes) > 0:
@@ -439,11 +487,14 @@ class EnhancedMarketDataCollector:
                 "adx_di_plus": safe_round(di_plus),
                 "adx_di_minus": safe_round(di_minus),
                 "atr_14": safe_round(atr_14),
+                "atr_percent": safe_round(atr_percent),
                 "ema_9": safe_round(ema_9),
                 "ema_21": safe_round(ema_21),
                 "ema_50": safe_round(ema_50),
                 "ema_200": safe_round(ema_200),
                 "ema_cross_signal": ema_cross_signal or "neutral",
+                "ema_alignment_score": safe_round(ema_alignment_score, 3),
+                "trend_strength_score": safe_round(trend_strength_score, 3),
             }
 
             # Clean ichimoku values
@@ -461,6 +512,9 @@ class EnhancedMarketDataCollector:
                     "roc_10": safe_round(roc_10),
                 }
             )
+
+            for key, value in donchian.items():
+                result[key] = safe_round(value, 3 if "position" in key else 2)
 
             # Clean pivot points
             for key, value in pivot_points.items():
@@ -488,10 +542,13 @@ class EnhancedMarketDataCollector:
                     "adx_di_plus",
                     "adx_di_minus",
                     "atr_14",
+                    "atr_percent",
                     "ema_9",
                     "ema_21",
                     "ema_50",
                     "ema_200",
+                    "ema_alignment_score",
+                    "trend_strength_score",
                     "ichimoku_tenkan",
                     "ichimoku_kijun",
                     "ichimoku_senkou_a",
@@ -503,6 +560,9 @@ class EnhancedMarketDataCollector:
                     "cci_20",
                     "williams_r",
                     "roc_10",
+                    "donchian_high_20",
+                    "donchian_low_20",
+                    "donchian_position_20",
                     "pivot_point",
                     "pivot_r1",
                     "pivot_r2",
@@ -784,6 +844,56 @@ class EnhancedMarketDataCollector:
             return "bearish"
         else:
             return "neutral"
+
+    def _calculate_ema_alignment_score(
+        self, ema_9: float, ema_21: float, ema_50: float, ema_200: float
+    ) -> float:
+        """Score EMA stack alignment from -1 bearish to +1 bullish."""
+        pairs = [(ema_9, ema_21), (ema_21, ema_50), (ema_50, ema_200)]
+        scores = []
+        for fast, slow in pairs:
+            if fast <= 0 or slow <= 0:
+                continue
+            if fast > slow:
+                scores.append(1.0)
+            elif fast < slow:
+                scores.append(-1.0)
+            else:
+                scores.append(0.0)
+        return float(np.mean(scores)) if scores else 0.0
+
+    def _calculate_trend_strength_score(
+        self, adx: float, di_plus: float, di_minus: float
+    ) -> float:
+        """Score directional trend strength from ADX and DI values."""
+        if adx <= 0:
+            return 0.0
+        direction = 1.0 if di_plus > di_minus else -1.0 if di_minus > di_plus else 0.0
+        strength = min(adx / 50.0, 1.0)
+        return float(direction * strength)
+
+    def _calculate_donchian_channel(
+        self, highs: pd.Series, lows: pd.Series, closes: pd.Series, period: int = 20
+    ) -> Dict[str, float]:
+        """Calculate 20-period Donchian channel and current price position."""
+        if len(closes) < period:
+            current = float(closes.iloc[-1]) if len(closes) else 0.0
+            return {
+                "donchian_high_20": current,
+                "donchian_low_20": current,
+                "donchian_position_20": 0.5,
+            }
+
+        high = float(highs.iloc[-period:].max())
+        low = float(lows.iloc[-period:].min())
+        close = float(closes.iloc[-1])
+        width = high - low
+        position = (close - low) / width if width > 0 else 0.5
+        return {
+            "donchian_high_20": high,
+            "donchian_low_20": low,
+            "donchian_position_20": float(np.clip(position, 0, 1)),
+        }
 
     def _calculate_ichimoku(
         self, highs: pd.Series, lows: pd.Series, closes: pd.Series

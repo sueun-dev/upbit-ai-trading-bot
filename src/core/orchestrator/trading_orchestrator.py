@@ -97,7 +97,6 @@ class TradingOrchestrator:
         self,
         access_key: str,
         secret_key: str,
-        openai_api_key: str,
         trade_analyzer: AILearningSystem,
     ) -> None:
         """Initialize orchestrator with trader and AI analyzer.
@@ -105,21 +104,20 @@ class TradingOrchestrator:
         Args:
             access_key: Upbit API access key.
             secret_key: Upbit API secret key.
-            openai_api_key: OpenAI API key.
             trade_analyzer: Trade history analyzer instance.
         """
         self.circuit_breaker = CircuitBreaker()
         self.trader = UpbitTrader(access_key=access_key, secret_key=secret_key)
-        self.ai_analyzer = AIAnalyzer(api_key=openai_api_key)
+        self.ai_analyzer = AIAnalyzer()
         self.data_store = DataStore()
         self.trade_analyzer = trade_analyzer
 
-        # AI Safety Systems - Initialize with API key
-        self.multi_ai_validator = MultiAIValidator(api_key=openai_api_key)
-        self.risk_monitor = RiskMonitor(api_key=openai_api_key)
+        # AI safety systems use the local OAuth bridge through OpenAIClient.
+        self.multi_ai_validator = MultiAIValidator()
+        self.risk_monitor = RiskMonitor()
         self.adaptive_risk_manager = AdaptiveRiskManager()
-        self.pattern_learner = PatternLearner(api_key=openai_api_key)
-        self.post_trade_analyzer = PostTradeAnalyzer(api_key=openai_api_key)
+        self.pattern_learner = PatternLearner()
+        self.post_trade_analyzer = PostTradeAnalyzer()
 
         self._cycle_count = 0
         self._last_cycle_time: Optional[str] = None
