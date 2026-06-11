@@ -312,13 +312,13 @@ class UpbitTrader:
             return self._handle_hold_action(symbol)
 
         if action == ACTION_BUY:
-            return self._execute_regular_buy(symbol)
+            return self._execute_regular_buy(symbol, decision_data)
 
         if action == ACTION_BUY_MORE:
             averaging = (decision_data or {}).get("averaging_analysis")
             if averaging:
                 return self._buy_average_down(symbol, averaging)
-            return self._execute_regular_buy(symbol)
+            return self._execute_regular_buy(symbol, decision_data)
 
         if action == ACTION_SELL_ALL:
             return self._execute_sell_all(symbol)
@@ -358,17 +358,39 @@ class UpbitTrader:
             return DEFAULT_BUY_AMOUNT_KRW
         return 0
 
-    def _execute_regular_buy(self, symbol: str) -> bool:
+    def _execute_regular_buy(
+        self, symbol: str, decision_data: Optional[Dict[str, Any]] = None
+    ) -> bool:
         """Execute a fixed KRW amount buy.
 
         Args:
             symbol: Cryptocurrency symbol.
+            decision_data: Decision metadata containing recommended sizing.
 
         Returns:
             True if buy was successful, False otherwise.
         """
-        logger.info(LOG_REGULAR_BUY.format(symbol, DEFAULT_BUY_AMOUNT_KRW))
-        return self.buy_market_order(symbol, DEFAULT_BUY_AMOUNT_KRW)
+        amount = self._resolve_buy_amount(decision_data)
+        logger.info(LOG_REGULAR_BUY.format(symbol, amount))
+        return self.buy_market_order(symbol, amount)
+
+    def _resolve_buy_amount(self, decision_data: Optional[Dict[str, Any]]) -> float:
+        """Resolve final regular-buy amount from risk-managed decision data."""
+        raw_amount = float(DEFAULT_BUY_AMOUNT_KRW)
+        if decision_data:
+            raw_amount = float(
+                decision_data.get("recommended_amount_krw")
+                or decision_data.get("amount_krw")
+                or DEFAULT_BUY_AMOUNT_KRW
+            )
+
+        try:
+            available_krw = float(self.get_portfolio_status().get("available_krw", 0))
+        except Exception as exc:
+            logger.warning("Could not verify KRW balance before buy: %s", exc)
+            available_krw = raw_amount
+
+        return max(0.0, min(raw_amount, available_krw))
 
     def _buy_average_down(self, symbol: str, avg_analysis: Dict[str, Any]) -> bool:
         """Execute averaging down buy based on analysis.
@@ -519,7 +541,7 @@ class UpbitTrader:
         """Get portfolio status through portfolio manager.
 
         Args:
-            api_key: Optional OpenAI API key for AI analysis.
+            api_key: Backward-compatible placeholder for portfolio AI analysis.
 
         Returns:
             Portfolio status dictionary.

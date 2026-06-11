@@ -11,8 +11,14 @@ load_dotenv()
 UPBIT_ACCESS_KEY = os.getenv("UPBIT_ACCESS_KEY")
 UPBIT_SECRET_KEY = os.getenv("UPBIT_SECRET_KEY")
 
-# === OpenAI API Key ===
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# === Local AI OAuth Bridge ===
+# The trading bot talks to Sueun's local OpenAI-compatible OAuth bridge instead
+# of using a Platform API key directly.
+AI_BRIDGE_BASE_URL = os.getenv("AI_BRIDGE_BASE_URL", "http://127.0.0.1:8787/v1").rstrip(
+    "/"
+)
+AI_BRIDGE_API_KEY = os.getenv("AI_BRIDGE_API_KEY")
+AI_BRIDGE_TIMEOUT_SECONDS = float(os.getenv("AI_BRIDGE_TIMEOUT_SECONDS", "120"))
 
 # === 투자 전략 설정 ===
 MAX_INVEST_RATIO_PER_COIN = 0.20  # 단일 코인 최대 자산 비중 20%
@@ -42,7 +48,8 @@ AVERAGING_CONFIDENCE_MULTIPLIER = 1.0  # AI 신뢰도에 따른 물타기 금액
 CHECK_INTERVAL_SECONDS = 3600  # 1시간마다 루프 실행
 
 # === AI 관련 설정 ===
-AI_MODEL = "gpt-4o-mini"
+AI_MODEL = os.getenv("AI_MODEL", "gpt-5.5")
+AI_REASONING_EFFORT = os.getenv("AI_REASONING_EFFORT", "xhigh")
 AI_TEMPERATURE = 0.3  # 보수적 판단
 AI_MAX_TOKENS = 4096
 
@@ -84,11 +91,19 @@ MARKET_ANALYZER_PROMPT = (
     "- If you DON'T own a coin: only use 'buy' or 'hold' actions\n"
     "- If you DO own a coin: use 'buy_more', 'hold', 'partial_sell', or 'sell_all'\n"
     "- Never suggest sell actions for coins you don't own\n\n"
+    "📰 NEWS DISCIPLINE:\n"
+    "- Treat news as a catalyst, not proof by itself.\n"
+    "- Prefer fresh articles from higher-quality sources and corroborated events.\n"
+    "- Do not buy on a single weak headline unless quantitative signals confirm it.\n"
+    "- Mention when the news is stale, low-quality, or not specific to the symbol.\n\n"
     "📈 ADVANCED QUANTITATIVE STRATEGIES:\n"
     "- RSI Oversold (<30): Consider buying, especially with volume confirmation\n"
     "- RSI Overbought (>70): Consider taking profits if holding\n"
     "- MACD Bullish Crossover: Strong buy signal when confirmed by volume\n"
     "- Bollinger Band Squeeze: Prepare for volatility breakout\n"
+    "- ADX + DI direction + EMA alignment: confirm whether trend strength supports the action\n"
+    "- ATR% and Donchian position: avoid overextended entries and size down in chaotic markets\n"
+    "- 24h KRW turnover and relative volume z-score: confirm that the move is liquid enough\n"
     "- Price near Support + High Volume: Potential reversal buy opportunity\n"
     "- Volume Ratio >2.0: Unusual activity, investigate breakout potential\n"
     "- Correlation <0.3 with BTC: Independent movement, unique opportunity\n"

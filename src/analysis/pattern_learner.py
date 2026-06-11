@@ -60,11 +60,11 @@ class PatternLearner:
     - Performance tracking
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize the pattern learner.
 
         Args:
-            api_key: OpenAI API key
+            api_key: Backward-compatible placeholder; local OAuth bridge is used.
         """
         self.openai_client = OpenAIClient(api_key=api_key)
         self.db_path = get_db_path("pattern_learning.db")

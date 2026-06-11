@@ -118,7 +118,7 @@ def _analyze_portfolio_with_ai(
         krw_balance: KRW balance
         total_balance: Total portfolio balance
         crypto_assets: Dictionary of crypto assets
-        api_key: OpenAI API key
+        api_key: Backward-compatible placeholder; local OAuth bridge is used.
 
     Returns:
         AI analysis results

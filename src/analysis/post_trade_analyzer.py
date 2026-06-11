@@ -6,7 +6,7 @@ both successful and unsuccessful trades, especially stop-loss executions.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from src.analysis.pattern_learner import PatternLearner
 from src.shared.openai_client import OpenAIClient
@@ -70,11 +70,11 @@ class PostTradeAnalyzer:
     - Performance metrics calculation
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize the post-trade analyzer.
 
         Args:
-            api_key: OpenAI API key
+            api_key: Backward-compatible placeholder; local OAuth bridge is used.
         """
         self.openai_client = OpenAIClient(api_key=api_key)
         self.pattern_learner = PatternLearner(api_key=api_key)

@@ -8,9 +8,9 @@ AI 기반 업비트 암호화폐 자동 거래 시스템 — 뉴스 수집, 시�
 
 ## 주요 기능 (Features)
 
-- **AI 의사결정**: OpenAI `gpt-4o-mini` 모델로 시장 데이터·뉴스·포트폴리오를 분석해 매수/매도/보유를 결정
-- **뉴스 수집**: 다수의 암호화폐 RSS 피드(CoinTelegraph, CoinDesk, Decrypt, The Block 등 20여 개)에서 기사를 수집
-- **기술적 분석**: RSI, MACD, Bollinger Bands, 지지/저항, 변동성 등 정량 지표 산출
+- **AI 의사결정**: 로컬 OAuth bridge(`http://127.0.0.1:8787/v1`)를 통해 시장 데이터·뉴스·포트폴리오를 분석해 매수/매도/보유를 결정
+- **뉴스 수집**: 암호화폐 RSS 피드를 수집한 뒤 소스 신뢰도, 신선도, 관련성, URL/제목 중복을 기준으로 필터링·정렬
+- **기술적 분석**: RSI, MACD, Bollinger Bands, ADX/DI, ATR%, EMA 정렬, Donchian 위치, 거래대금/상대 거래량 등 정량 지표 산출
 - **다중 AI 검증**: 동일 모델로 독립적인 교차 검증 단계를 거쳐 의사결정 신뢰도 보강
 - **적응형 리스크 관리**: 포지션 사이징, 손절매 추천, 포트폴리오 노출 한도 적용
 - **물타기(Averaging Down) 전략**: 설정 가능한 조건에서 추가 매수
@@ -23,7 +23,7 @@ AI 기반 업비트 암호화폐 자동 거래 시스템 — 뉴스 수집, 시�
 - Python 3.11 이상
 - [Poetry](https://python-poetry.org/) (의존성 관리, 권장)
 - Upbit Open API 키 (Access / Secret)
-- OpenAI API 키
+- 로컬 ChatGPT/Codex OAuth bridge 실행 환경 (`http://127.0.0.1:8787/v1`)
 
 ## 설치 (Installation)
 
@@ -36,20 +36,24 @@ cd upbit-ai-trading-bot
 poetry install
 ```
 
-Poetry를 사용하지 않는 경우 `pyproject.toml`에 명시된 런타임 의존성(`pyupbit`, `openai`, `requests`, `python-dotenv`, `lxml`, `pandas`, `feedparser`, `chardet`)을 직접 설치하세요.
+Poetry를 사용하지 않는 경우 `pyproject.toml`에 명시된 런타임 의존성(`pyupbit`, `requests`, `python-dotenv`, `lxml`, `pandas`, `feedparser`, `chardet` 등)을 직접 설치하세요.
 
 ## 환경 변수 설정 (Configuration)
 
-API 키는 환경 변수 또는 프로젝트 루트의 `.env` 파일로 제공합니다. (`python-dotenv`로 자동 로드되며, `.env`는 `.gitignore`에 포함되어 있습니다.)
+업비트 API 키와 OAuth bridge 설정은 환경 변수 또는 프로젝트 루트의 `.env` 파일로 제공합니다. (`python-dotenv`로 자동 로드되며, `.env`는 `.gitignore`에 포함되어 있습니다.)
 
 ```bash
 # .env
 UPBIT_ACCESS_KEY=your_upbit_access_key
 UPBIT_SECRET_KEY=your_upbit_secret_key
-OPENAI_API_KEY=your_openai_api_key
+
+# Optional: defaults shown
+AI_BRIDGE_BASE_URL=http://127.0.0.1:8787/v1
+AI_MODEL=gpt-5.5
+AI_REASONING_EFFORT=xhigh
 ```
 
-세 변수 중 하나라도 없으면 프로그램이 시작 시 명확한 메시지와 함께 종료됩니다.
+`UPBIT_ACCESS_KEY` 또는 `UPBIT_SECRET_KEY`가 없으면 프로그램이 시작 시 명확한 메시지와 함께 종료됩니다. AI 호출은 OpenAI Platform API 키를 직접 쓰지 않고 로컬 OAuth bridge로 전송됩니다. bridge 로그인 토큰이 만료되었거나 서버가 꺼져 있으면 AI 요청 단계에서 명확한 오류가 납니다.
 
 기타 전략·루프 설정값은 `src/infrastructure/config/settings.py`에서 조정할 수 있습니다 (예: `CHECK_INTERVAL_SECONDS`, 투자 비율, 손절 기준, 사용 AI 모델 등).
 
@@ -154,7 +158,6 @@ insights = trade_analyzer.analyze_historical_trades(days_back=30)
 orchestrator = TradingOrchestrator(
     access_key=UPBIT_ACCESS_KEY,
     secret_key=UPBIT_SECRET_KEY,
-    openai_api_key=OPENAI_API_KEY,
     trade_analyzer=trade_analyzer
 )
 ```
@@ -480,7 +483,9 @@ analysis_result = AIAnalysisResult(
 - `MIN_ORDER_KRW = 10_000` - 업비트 최소 주문 금액
 - `STOP_LOSS_THRESHOLD = -0.15` - 손절 기준
 - `EMERGENCY_STOP_LOSS = -0.25` - 긴급 손절 기준
-- `AI_MODEL = "gpt-4o-mini"` - 사용 AI 모델
+- `AI_BRIDGE_BASE_URL = "http://127.0.0.1:8787/v1"` - 로컬 OAuth bridge URL
+- `AI_MODEL = "gpt-5.5"` - bridge에 요청하는 기본 모델
+- `AI_REASONING_EFFORT = "xhigh"` - bridge에 함께 전달하는 추론 강도
 
 ### src/core/orchestrator/trading_orchestrator.py
 - `DEFAULT_BUY_AMOUNT_KRW = 30_000` - 기본 매수 금액

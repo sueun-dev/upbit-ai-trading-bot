@@ -7,10 +7,9 @@ license = "MIT"
 readme = "README.md"
 packages = [{ include = "src" }]
 
-# NOTE: dependency constraints were widened to match the tested runtime
-# (Python 3.11+, openai 2.x, pandas 2.2/3.x). Run `poetry lock` to refresh
-# poetry.lock after editing this file. The flask/dash/plotly dashboard stack
-# and beautifulsoup4 were removed: nothing in src/ imported them.
+# NOTE: runtime AI calls now go through the local OAuth bridge via requests.
+# The openai dependency remains in the locked dependency set until Poetry is
+# available to refresh poetry.lock safely.
 [tool.poetry.dependencies]
 python = "^3.11"
 pyupbit = "^0.2.33"

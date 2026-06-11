@@ -5,7 +5,7 @@ reducing single-point-of-failure risks and improving decision quality.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -47,11 +47,11 @@ class MultiAIValidator:
     - Final Arbitrator
     """
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: Optional[str] = None) -> None:
         """Initialize the multi-AI validator.
 
         Args:
-            api_key: OpenAI API key
+            api_key: Backward-compatible placeholder; local OAuth bridge is used.
         """
         self.openai_client = OpenAIClient(api_key=api_key)
         self.validators = {

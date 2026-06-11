@@ -12,9 +12,11 @@ import logging
 import re
 import warnings
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from html import unescape
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import chardet
 import feedparser
@@ -44,6 +46,49 @@ MAX_WORKERS = 6
 # Article limits
 MAX_ARTICLES_PER_FEED = 10
 DEFAULT_MAX_ARTICLES = 20
+MAX_ARTICLE_AGE_HOURS = 36
+MIN_ARTICLE_QUALITY_SCORE = 0.38
+MIN_TITLE_LENGTH = 12
+
+# Source quality scores are intentionally conservative. Lower-tier sources can
+# still enter the analysis, but only when they are fresh and clearly relevant.
+SOURCE_QUALITY_SCORES = {
+    "CoinDesk": 1.0,
+    "The Block": 0.98,
+    "CoinTelegraph": 0.94,
+    "Decrypt": 0.9,
+    "Blockworks": 0.9,
+    "CryptoSlate": 0.82,
+    "BeInCrypto": 0.78,
+    "The Daily Hodl": 0.72,
+    "NewsBTC": 0.68,
+    "Bitcoinist": 0.66,
+    "CryptoPotato": 0.64,
+    "CryptoNews": 0.64,
+    "AMBCrypto": 0.58,
+    "U.Today": 0.58,
+    "Coin Journal": 0.55,
+    "CryptoNewsZ": 0.5,
+}
+
+MARKET_MOVING_KEYWORDS = {
+    "listing": 0.22,
+    "listed": 0.22,
+    "delisting": 0.25,
+    "hack": 0.2,
+    "exploit": 0.2,
+    "etf": 0.18,
+    "sec": 0.16,
+    "lawsuit": 0.15,
+    "regulation": 0.15,
+    "partnership": 0.12,
+    "upgrade": 0.12,
+    "mainnet": 0.12,
+    "airdrop": 0.1,
+    "tokenomics": 0.1,
+    "whale": 0.08,
+    "volume": 0.08,
+}
 
 # Cryptocurrency keywords
 CRYPTO_KEYWORDS = [
@@ -267,13 +312,9 @@ class EnhancedRSSAggregator:
                 except Exception as e:
                     logger.error(f"❌ {feed_name}: Collection failed - {e}")
 
-        # Process and deduplicate
+        # Process, deduplicate and rank by source quality, freshness and relevance.
         unique_articles = self._deduplicate_articles(all_articles)
-
-        # Sort by date (newest first)
-        sorted_articles = sorted(
-            unique_articles, key=lambda x: x.get("published_date", ""), reverse=True
-        )
+        sorted_articles = self._rank_articles(unique_articles)
 
         final_articles = sorted_articles[:max_articles]
         logger.info(f"✅ Total articles collected: {len(final_articles)}")
@@ -434,25 +475,28 @@ class EnhancedRSSAggregator:
             link = entry.get("link", "").strip()
             summary = entry.get("summary", "").strip()
 
-            # Get publish date
-            published = ""
+            published = entry.get("published", "")
+            published_dt = None
             if hasattr(entry, "published_parsed") and entry.published_parsed:
-                published = datetime(*entry.published_parsed[:6]).isoformat()
-            elif hasattr(entry, "published"):
-                published = entry.published
+                published_parts = entry.published_parsed
+                published_dt = datetime(
+                    published_parts[0],
+                    published_parts[1],
+                    published_parts[2],
+                    published_parts[3],
+                    published_parts[4],
+                    published_parts[5],
+                    tzinfo=timezone.utc,
+                )
 
-            # Check if crypto-related
-            if not self._is_crypto_related(title + " " + summary):
-                return None
-
-            return {
-                "title": self._clean_text(title),
-                "summary": self._clean_text(summary),
-                "url": link,
-                "source": feed_config["name"],
-                "published_date": published,
-                "weight": feed_config.get("weight", 0.5),
-            }
+            return self._build_article(
+                title=title,
+                summary=summary,
+                link=link,
+                published=published,
+                feed_config=feed_config,
+                published_dt=published_dt,
+            )
 
         except Exception as e:
             logger.debug(f"Error extracting article: {e}")
@@ -469,18 +513,13 @@ class EnhancedRSSAggregator:
             summary = self._get_xml_text(item, ["description", "summary"])
             published = self._get_xml_text(item, ["pubDate", "published"])
 
-            # Check if crypto-related
-            if not self._is_crypto_related(title + " " + summary):
-                return None
-
-            return {
-                "title": self._clean_text(title),
-                "summary": self._clean_text(summary),
-                "url": link,
-                "source": feed_config["name"],
-                "published_date": published,
-                "weight": feed_config.get("weight", 0.5),
-            }
+            return self._build_article(
+                title=title,
+                summary=summary,
+                link=link,
+                published=published,
+                feed_config=feed_config,
+            )
 
         except Exception as e:
             logger.debug(f"Error extracting from XML: {e}")
@@ -501,18 +540,13 @@ class EnhancedRSSAggregator:
                 item_content, r"<pubDate>(.*?)</pubDate>"
             )
 
-            # Check if crypto-related
-            if not self._is_crypto_related(title + " " + summary):
-                return None
-
-            return {
-                "title": self._clean_text(title),
-                "summary": self._clean_text(summary),
-                "url": link,
-                "source": feed_config["name"],
-                "published_date": published,
-                "weight": feed_config.get("weight", 0.5),
-            }
+            return self._build_article(
+                title=title,
+                summary=summary,
+                link=link,
+                published=published,
+                feed_config=feed_config,
+            )
 
         except Exception as e:
             logger.debug(f"Error extracting with regex: {e}")
@@ -538,6 +572,123 @@ class EnhancedRSSAggregator:
         text_lower = text.lower()
         return any(keyword in text_lower for keyword in CRYPTO_KEYWORDS)
 
+    def _build_article(
+        self,
+        title: str,
+        summary: str,
+        link: str,
+        published: str,
+        feed_config: Dict[str, Any],
+        published_dt: Optional[datetime] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Build a normalized, scored article or drop low-quality items."""
+        clean_title = self._clean_text(title)
+        clean_summary = self._clean_text(summary)
+        clean_url = self._canonicalize_url(link)
+
+        if len(clean_title) < MIN_TITLE_LENGTH or not clean_url:
+            return None
+
+        combined_text = f"{clean_title} {clean_summary}"
+        if not self._is_crypto_related(combined_text):
+            return None
+
+        parsed_dt = published_dt or self._parse_published_datetime(published)
+        if parsed_dt and self._article_age_hours(parsed_dt) > MAX_ARTICLE_AGE_HOURS:
+            return None
+
+        source = feed_config["name"]
+        source_score = self._source_quality_score(source, feed_config)
+        freshness_score = self._freshness_score(parsed_dt)
+        relevance_score = self._relevance_score(combined_text)
+        url_score = 1.0 if self._url_domain(clean_url) else 0.0
+
+        quality_score = (
+            source_score * 0.42
+            + freshness_score * 0.28
+            + relevance_score * 0.25
+            + url_score * 0.05
+        )
+        if quality_score < MIN_ARTICLE_QUALITY_SCORE:
+            return None
+
+        return {
+            "title": clean_title,
+            "summary": clean_summary,
+            "url": clean_url,
+            "source": source,
+            "published_date": self._format_published_datetime(parsed_dt, published),
+            "published_ts": parsed_dt.timestamp() if parsed_dt else 0.0,
+            "weight": feed_config.get("weight", 0.5),
+            "source_score": round(source_score, 3),
+            "freshness_score": round(freshness_score, 3),
+            "relevance_score": round(relevance_score, 3),
+            "quality_score": round(quality_score, 3),
+            "url_domain": self._url_domain(clean_url),
+        }
+
+    def _parse_published_datetime(self, value: str) -> Optional[datetime]:
+        """Parse RSS/Atom date strings into UTC datetimes."""
+        if not value:
+            return None
+
+        try:
+            parsed = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError):
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    def _format_published_datetime(
+        self, value: Optional[datetime], fallback: str
+    ) -> str:
+        """Return normalized ISO datetime when possible."""
+        if value:
+            return value.isoformat()
+        return fallback
+
+    def _article_age_hours(self, published: datetime) -> float:
+        """Return article age in hours."""
+        now = datetime.now(timezone.utc)
+        return max(0.0, (now - published).total_seconds() / 3600)
+
+    def _freshness_score(self, published: Optional[datetime]) -> float:
+        """Score recent articles higher without dropping undated feeds entirely."""
+        if not published:
+            return 0.45
+        age_hours = self._article_age_hours(published)
+        if age_hours <= 3:
+            return 1.0
+        if age_hours <= 12:
+            return 0.82
+        if age_hours <= 24:
+            return 0.64
+        if age_hours <= MAX_ARTICLE_AGE_HOURS:
+            return 0.42
+        return 0.0
+
+    def _source_quality_score(self, source: str, feed_config: Dict[str, Any]) -> float:
+        """Return source reliability score, falling back to feed weight."""
+        return float(SOURCE_QUALITY_SCORES.get(source, feed_config.get("weight", 0.5)))
+
+    def _relevance_score(self, text: str) -> float:
+        """Score crypto and market-moving relevance from title/summary text."""
+        text_lower = text.lower()
+        keyword_hits = sum(1 for keyword in CRYPTO_KEYWORDS if keyword in text_lower)
+        base_score = min(0.65, keyword_hits * 0.08)
+        event_score = sum(
+            weight
+            for keyword, weight in MARKET_MOVING_KEYWORDS.items()
+            if keyword in text_lower
+        )
+        ticker_bonus = 0.12 if re.search(r"\(([A-Z0-9]{2,10})\)", text) else 0.0
+        return float(min(1.0, base_score + event_score + ticker_bonus))
+
     def _clean_text(self, text: str) -> str:
         """Clean and normalize text."""
         # Unescape HTML entities
@@ -551,14 +702,52 @@ class EnhancedRSSAggregator:
 
         return text.strip()
 
+    def _canonicalize_url(self, url: str) -> str:
+        """Normalize URLs for dedupe while preserving the article identity."""
+        if not url:
+            return ""
+
+        parsed = urlparse(unescape(url).strip())
+        if not parsed.scheme or not parsed.netloc:
+            return url.strip()
+
+        query = [
+            (key, value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+            if not key.lower().startswith("utm_")
+            and key.lower() not in {"fbclid", "gclid", "mc_cid", "mc_eid"}
+        ]
+        return urlunparse(
+            (
+                parsed.scheme.lower(),
+                parsed.netloc.lower(),
+                parsed.path.rstrip("/"),
+                "",
+                urlencode(query),
+                "",
+            )
+        )
+
+    def _url_domain(self, url: str) -> str:
+        """Return URL host without leading www."""
+        parsed = urlparse(url)
+        return parsed.netloc.lower().removeprefix("www.")
+
     def _deduplicate_articles(
         self, articles: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Remove duplicate articles based on title similarity."""
+        """Remove duplicate articles based on canonical URL and title."""
+        seen_urls = set()
         seen_titles = set()
         unique_articles = []
 
         for article in articles:
+            url = article.get("url", "")
+            if url:
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+
             # Create normalized title for comparison
             normalized_title = re.sub(r"[^a-z0-9]", "", article["title"].lower())
 
@@ -567,6 +756,18 @@ class EnhancedRSSAggregator:
                 unique_articles.append(article)
 
         return unique_articles
+
+    def _rank_articles(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Rank articles by quality, then recency."""
+        return sorted(
+            articles,
+            key=lambda article: (
+                article.get("quality_score", 0),
+                article.get("published_ts", 0),
+                article.get("source_score", 0),
+            ),
+            reverse=True,
+        )
 
 
 # Create global instance
